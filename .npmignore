@@ -10,3 +10,5 @@ pi_sidecar_client/
 .gitignore
 .coderabbit.yaml
 AGENTS.md
+*.whl
+*.tar.gz
