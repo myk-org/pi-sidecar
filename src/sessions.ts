@@ -142,7 +142,13 @@ export class SessionStore {
     }
 
     if (!model) {
-      throw new Error(`Model '${options.model}' not found for provider '${options.provider}'. Use GET /models to list available models.`);
+      // Check acpx models (discovered at runtime, not in the Pi SDK registry)
+      const isAcpxModel = this.acpxModels.some(m => m.id === options.model);
+      if (!isAcpxModel) {
+        throw new Error(`Model '${options.model}' not found for provider '${options.provider}'. Use GET /models to list available models.`);
+      }
+      // acpx model found — proceed without a registry model object
+      // (createAgentSession will resolve it via the acpx extension)
     }
 
     // Build extension paths (only include existing files)
