@@ -1,46 +1,85 @@
-const CHECK_INTERVAL = 10_000; // 10 seconds
-const MAX_FAILURES = 3; // 30 seconds of failures before shutdown
+export interface WatchdogOptions {
+  /** Health check interval in ms (default: 30000 = 30s) */
+  intervalMs?: number;
+  /** Health check timeout in ms (default: 10000 = 10s) */
+  timeoutMs?: number;
+  /** Consecutive failures before triggering onDead (default: 6) */
+  maxFailures?: number;
+  /** Grace period before starting checks in ms (default: 60000 = 60s) */
+  startDelayMs?: number;
+}
 
-export function startWatchdog(healthUrl: string, onDead: () => void): () => void {
+const DEFAULT_INTERVAL_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_FAILURES = 6;
+const DEFAULT_START_DELAY_MS = 60_000;
+
+export function startWatchdog(
+  healthUrl: string,
+  onDead: () => void,
+  options?: WatchdogOptions,
+): () => void {
+  const intervalMs = Math.max(options?.intervalMs ?? DEFAULT_INTERVAL_MS, 1000);
+  const timeoutMs = Math.max(options?.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1000);
+  const maxFailures = Math.max(options?.maxFailures ?? DEFAULT_MAX_FAILURES, 1);
+  const startDelayMs = Math.max(options?.startDelayMs ?? DEFAULT_START_DELAY_MS, 0);
+
   let consecutiveFailures = 0;
   let stopped = false;
   let dead = false;
+  let checking = false;
   let currentController: AbortController | undefined;
   let currentTimeout: ReturnType<typeof setTimeout> | undefined;
+  let intervalId: ReturnType<typeof setInterval> | undefined;
 
-  const intervalId = setInterval(async () => {
-    if (stopped) return;
+  function startPolling(): void {
+    console.debug(`[watchdog] Grace period ended, starting health checks (interval=${intervalMs}ms, timeout=${timeoutMs}ms, maxFailures=${maxFailures})`);
+    intervalId = setInterval(async () => {
+      if (stopped || checking) return;
+      checking = true;
 
-    try {
-      currentController = new AbortController();
-      currentTimeout = setTimeout(() => currentController?.abort(), 5000);
-      const resp = await fetch(healthUrl, { signal: currentController.signal });
-      if (stopped) return;
-      if (resp.ok) {
-        consecutiveFailures = 0;
-      } else {
-        console.debug("[watchdog] Health check returned status:", resp.status);
+      try {
+        currentController = new AbortController();
+        currentTimeout = setTimeout(() => currentController?.abort(), timeoutMs);
+        const resp = await fetch(healthUrl, { signal: currentController.signal });
+        if (stopped) return;
+        if (resp.ok) {
+          consecutiveFailures = 0;
+        } else {
+          console.debug("[watchdog] Health check returned status:", resp.status);
+          consecutiveFailures++;
+        }
+      } catch (err) {
+        if (stopped) return;
+        console.debug("[watchdog] Health check failed:", err);
         consecutiveFailures++;
+      } finally {
+        if (currentTimeout) clearTimeout(currentTimeout);
+        currentTimeout = undefined;
+        currentController = undefined;
       }
-    } catch (err) {
-      if (stopped) return;
-      console.debug("[watchdog] Health check failed:", err);
-      consecutiveFailures++;
-    } finally {
-      if (currentTimeout) clearTimeout(currentTimeout);
-      currentTimeout = undefined;
-      currentController = undefined;
-    }
 
-    if (consecutiveFailures >= MAX_FAILURES && !dead) {
-      dead = true;
-      onDead();
-    }
-  }, CHECK_INTERVAL);
+      if (consecutiveFailures >= maxFailures && !dead) {
+        dead = true;
+        try {
+          onDead();
+        } catch (err) {
+          console.error("[watchdog] onDead callback threw:", err);
+        }
+      }
+      checking = false;
+    }, intervalMs);
+  }
+
+  // Start after grace period
+  const delayId = setTimeout(() => {
+    if (!stopped) startPolling();
+  }, startDelayMs);
 
   return () => {
     stopped = true;
-    clearInterval(intervalId);
+    clearTimeout(delayId);
+    if (intervalId) clearInterval(intervalId);
     if (currentTimeout) clearTimeout(currentTimeout);
     currentController?.abort();
     currentTimeout = undefined;

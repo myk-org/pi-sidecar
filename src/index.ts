@@ -1,9 +1,9 @@
 export { SessionStore, type CreateSessionOptions } from "./sessions.js";
-export { startWatchdog } from "./watchdog.js";
+export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { SessionStore } from "./sessions.js";
-import { startWatchdog } from "./watchdog.js";
+import { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 
 const MAX_BODY_SIZE = 1_048_576;
 
@@ -59,7 +59,7 @@ export interface SidecarHandle {
   close(): Promise<void>;
 }
 
-export function startSidecar(options?: { port?: number; host?: string; watchdogUrl?: string }): SidecarHandle {
+export function startSidecar(options?: { port?: number; host?: string; watchdogUrl?: string; watchdogOptions?: WatchdogOptions }): SidecarHandle {
   const PORT = options?.port ?? parseInt(process.env.SIDECAR_PORT || "9100", 10);
   const HOST = options?.host ?? (process.env.DEV_MODE === "true" ? "0.0.0.0" : "127.0.0.1");
 
@@ -171,7 +171,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         clearInterval(cleanupInterval);
         store.disposeAll();
         server.close();
-      });
+      }, options?.watchdogOptions);
     }
 
     // Auto-discover models from extensions on startup
