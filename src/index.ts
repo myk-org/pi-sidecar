@@ -68,6 +68,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   const server = createServer(async (req, res) => {
     const method = req.method || "GET";
     const url = req.url || "/";
+    const requestStart = Date.now();
 
     try {
       // GET /health
@@ -105,6 +106,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
           return;
         }
+        console.log(`[sidecar] POST /sessions provider=${provider} model=${model} cwd=${cwd || process.cwd()}`);
         const sessionId = await store.create({
           provider,
           model: model || "",
@@ -112,6 +114,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           cwd: cwd || process.cwd(),
           customTools: custom_tools,
         });
+        console.log(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId}`);
         sendJson(res, 201, { session_id: sessionId });
         return;
       }
@@ -124,7 +127,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 400, { error: "message is required" });
           return;
         }
+        console.log(`[sidecar] POST /sessions/${params.id}/prompt message_length=${body.message.length}`);
         const result = await store.prompt(params.id, body.message);
+        console.log(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}`);
         sendJson(res, 200, result);
         return;
       }
@@ -132,6 +137,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions/:id/abort
       params = routeMatch(url, "/sessions/:id/abort");
       if (method === "POST" && params) {
+        console.log(`[sidecar] POST /sessions/${params.id}/abort`);
         await store.abort(params.id);
         sendJson(res, 200, { aborted: true });
         return;
@@ -140,6 +146,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // DELETE /sessions/:id
       params = routeMatch(url, "/sessions/:id");
       if (method === "DELETE" && params) {
+        console.log(`[sidecar] DELETE /sessions/${params.id}`);
         store.delete(params.id);
         sendJson(res, 200, { deleted: true });
         return;
@@ -148,8 +155,14 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
-      const status = message.includes("not found") ? 404 : message.includes("Payload too large") ? 413 : message.includes("Invalid JSON") ? 400 : message.includes("is busy") ? 409 : 500;
-      console.error(`[sidecar] ${method} ${url} error:`, message);
+      const status = message.includes("not found for provider") ? 400
+        : message.includes("Model is required") ? 400
+        : message.includes("Payload too large") ? 413
+        : message.includes("Invalid JSON") ? 400
+        : message.includes("is busy") ? 409
+        : message.includes("not found") ? 404
+        : 500;
+      console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
       sendJson(res, status, { error: message });
     }
   });
