@@ -153,6 +153,6 @@ See the [`examples/`](examples/) directory for usage patterns:
 
 ## Architecture Notes
 
-- **Watchdog**: opt-in health-check poller activated via `SIDECAR_WATCHDOG_URL`. When enabled, monitors the given URL and shuts down the sidecar after 30 s of consecutive failures. Disabled by default for standalone usage.
+- **Watchdog**: opt-in health-check poller activated via `SIDECAR_WATCHDOG_URL`. When enabled, waits 60 s then monitors the given URL every 30 s; shuts down after 6 consecutive failures (~3 min). Timings are configurable via `watchdogOptions`. Disabled by default for standalone usage.
 - **Stale session cleanup**: sessions idle for >1 hour are automatically disposed (checked every 10 minutes).
 - **Model discovery**: runs at startup; `/health` returns 503 until complete.

@@ -131,7 +131,7 @@ Sessions accept an optional `custom_tools` array at creation time. The default t
 
 ### 3. Watchdog is opt-in
 
-`startWatchdog()` monitors a companion backend's health endpoint and kills the sidecar after 3 consecutive failures (30 s). It is **opt-in** — activated only when a `watchdogUrl` parameter is passed to `startSidecar()` or the `SIDECAR_WATCHDOG_URL` environment variable is set. Standalone usage works without a watchdog. Consumers with companion backends (like rootcoz) opt in by providing the health URL (e.g. `http://localhost:8000/health`).
+`startWatchdog()` monitors a companion backend's health endpoint. It waits a 60 s grace period before starting checks, then polls every 30 s and shuts down the sidecar after 6 consecutive failures (~3 min). All timings are configurable via `WatchdogOptions` (`intervalMs`, `timeoutMs`, `maxFailures`, `startDelayMs`). It is **opt-in** — activated only when a `watchdogUrl` parameter is passed to `startSidecar()` or the `SIDECAR_WATCHDOG_URL` environment variable is set. Standalone usage works without a watchdog. Consumers with companion backends (like rootcoz) opt in by providing the health URL (e.g. `http://localhost:8000/health`).
 
 ### 4. Localhost-only by default (trust model)
 
