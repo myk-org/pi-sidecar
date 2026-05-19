@@ -44,15 +44,18 @@ export function startWatchdog(
         const resp = await fetch(healthUrl, { signal: currentController.signal });
         if (stopped) return;
         if (resp.ok) {
+          if (consecutiveFailures > 0) {
+            console.log(`[watchdog] Health check recovered after ${consecutiveFailures} failure(s)`);
+          }
           consecutiveFailures = 0;
         } else {
-          console.debug("[watchdog] Health check returned status:", resp.status);
           consecutiveFailures++;
+          console.warn(`[watchdog] Health check returned status ${resp.status} (failure ${consecutiveFailures}/${maxFailures})`);
         }
       } catch (err) {
         if (stopped) return;
-        console.debug("[watchdog] Health check failed:", err);
         consecutiveFailures++;
+        console.warn(`[watchdog] Health check failed (failure ${consecutiveFailures}/${maxFailures}):`, err);
       } finally {
         if (currentTimeout) clearTimeout(currentTimeout);
         currentTimeout = undefined;

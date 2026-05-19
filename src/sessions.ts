@@ -203,7 +203,7 @@ export class SessionStore {
     });
 
     this.sessions.set(id, { session, lastActivity: Date.now(), inFlight: false });
-    console.log(`[sidecar] Session created: ${id} (provider=${options.provider}, model=${options.model})`);
+    console.log(`[sidecar] Session created: ${id} (provider=${options.provider}, model=${options.model}, cwd=${options.cwd}, tools=${options.customTools?.length ?? 0} custom)`);
     return id;
   }
 
@@ -218,13 +218,17 @@ export class SessionStore {
     entry.lastActivity = Date.now();
     entry.inFlight = true;
 
+    console.log(`[sidecar] Prompt started: session=${id}, message_length=${message.length}`);
+
     let responseText = "";
+    let textDeltaCount = 0;
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: null as number | null, duration_ms: 0 };
     const startTime = Date.now();
 
     const unsubscribe = entry.session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         responseText += event.assistantMessageEvent.delta;
+        textDeltaCount++;
       }
       if (event.type === "agent_end" && event.messages) {
         for (const msg of event.messages) {
@@ -238,11 +242,36 @@ export class SessionStore {
             }
           }
         }
+
+        // Fallback: if no text_delta was captured, extract from final assistant message
+        if (!responseText) {
+          const msgSummary = event.messages.map((m: any) => {
+            const contentTypes = Array.isArray(m.content)
+              ? m.content.map((c: any) => c.type).join(",")
+              : typeof m.content;
+            return `${m.role}(${contentTypes})`;
+          }).join(" → ");
+          console.warn(`[sidecar] No text_delta events captured (${textDeltaCount} deltas). Messages: ${msgSummary}. Extracting from agent_end messages`);
+          for (const msg of [...event.messages].reverse()) {
+            if (msg.role === "assistant" && msg.content) {
+              const textContent = Array.isArray(msg.content)
+                ? msg.content.filter((c: any) => c.type === "text").map((c: any) => c.text).join("")
+                : typeof msg.content === "string" ? msg.content : "";
+              if (textContent) {
+                responseText = textContent;
+                break;
+              }
+            }
+          }
+        }
       }
     });
 
     try {
       await entry.session.prompt(message);
+    } catch (err: any) {
+      console.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`);
+      throw err;
     } finally {
       unsubscribe();
       entry.inFlight = false;
@@ -250,6 +279,7 @@ export class SessionStore {
     }
 
     usage.duration_ms = Date.now() - startTime;
+    console.log(`[sidecar] Prompt completed: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration=${usage.duration_ms}ms`);
 
     return { text: responseText, usage };
   }
