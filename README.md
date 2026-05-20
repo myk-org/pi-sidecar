@@ -30,9 +30,13 @@ All endpoints accept/return JSON. Default base URL: `http://127.0.0.1:9100`.
 | `GET` | `/models` | List all discovered models. |
 | `POST` | `/models/refresh` | Re-run model discovery and return updated list. |
 | `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, custom_tools?}` → `{session_id}` |
-| `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage}` |
+| `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage, error?}` |
 | `POST` | `/sessions/:id/abort` | Abort an in-progress prompt. |
 | `DELETE` | `/sessions/:id` | Delete a session and free resources. |
+
+> **`POST /sessions/:id/prompt` — error field:**
+>
+> The response includes an optional `error` string field, present when the AI returned errors during processing. When `error` is set, `text` may still contain partial output. Python client callers: when `error` is present, `AIResult.success` will be `False`.
 
 ## TypeScript Usage
 

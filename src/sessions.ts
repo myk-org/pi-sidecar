@@ -230,10 +230,24 @@ export class SessionStore {
     const startTime = Date.now();
 
     const unsubscribe = entry.session.subscribe((event) => {
+      // Pi SDK event types don't export the error variant — cast is necessary
       if ((event as any).type === "error") {
         const errPayload = (event as any).error;
-        const errorMsg = typeof errPayload === "string" ? errPayload : errPayload?.message || JSON.stringify(errPayload);
-        errors.push(errorMsg);
+        let errorMsg: string;
+        if (typeof errPayload === "string") {
+          errorMsg = errPayload;
+        } else if (errPayload?.message) {
+          errorMsg = errPayload.message;
+        } else {
+          try {
+            errorMsg = JSON.stringify(errPayload);
+          } catch {
+            errorMsg = "[unstringifiable error]";
+          }
+        }
+        if (errors.length < 10) {
+          errors.push(errorMsg);
+        }
         console.error(`[sidecar] Prompt error event: session=${id}, error=${errorMsg}`);
       }
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
@@ -298,11 +312,9 @@ export class SessionStore {
       return { text: responseText, usage, error: errorText };
     }
 
-    // If no text was captured and no errors, that's suspicious
+    // Empty text is valid for tool-only responses — warn but don't error
     if (!responseText) {
-      const warning = "AI returned empty response — no text content was generated";
-      console.warn(`[sidecar] ${warning}: session=${id}`);
-      return { text: "", usage, error: warning };
+      console.warn(`[sidecar] AI returned empty text: session=${id}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}`);
     }
 
     return { text: responseText, usage };

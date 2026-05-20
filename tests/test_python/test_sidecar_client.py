@@ -173,6 +173,42 @@ class TestSidecarClient:
         assert result.success is False
         assert result.text == "internal error"
 
+    # -- prompt with error field on 200 --
+    async def test_client_prompt_with_error_field(self, client: SidecarClient):
+        """Prompt returns success=False when sidecar response contains error field."""
+        mock_resp = _mock_response(
+            200,
+            {
+                "text": "partial output",
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+                "error": "AI model returned an error during processing",
+            },
+        )
+        client._client.post = AsyncMock(return_value=mock_resp)
+
+        result = await client.prompt("sess-1", "hi")
+        assert result.success is False
+        assert result.text == "AI model returned an error during processing"
+        assert result.usage is not None
+        assert result.usage.input_tokens == 10
+
+    # -- prompt empty text --
+    async def test_client_prompt_empty_text(self, client: SidecarClient):
+        """Prompt returns success=True with empty text (valid for tool-only responses)."""
+        mock_resp = _mock_response(
+            200,
+            {
+                "text": "",
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+            },
+        )
+        client._client.post = AsyncMock(return_value=mock_resp)
+
+        result = await client.prompt("sess-1", "run the tool")
+        assert result.success is True
+        assert result.text == ""
+        assert result.usage is not None
+
     # -- delete_session --
     async def test_client_delete_session(self, client: SidecarClient):
         mock_resp = _mock_response(200)
@@ -246,6 +282,18 @@ class TestConvenienceFunctions:
         assert result.success is True
         assert result.session_id is None  # cleared after cleanup
         mock_client.delete_session.assert_awaited_once_with("sess-once")
+
+    # -- call_ai surfaces sidecar error --
+    async def test_call_ai_surfaces_sidecar_error(self, mock_client: AsyncMock):
+        """call_ai surfaces error field from sidecar prompt response."""
+        mock_client.create_session.return_value = "sess-err"
+        mock_client.prompt.return_value = AIResult(success=False, text="AI error: rate limited")
+
+        result = await call_ai("hello", ai_provider="gemini", ai_model="gemini-2.5-pro")
+
+        assert result.success is False
+        assert "rate limited" in result.text
+        assert result.session_id == "sess-err"
 
     # -- list_models no filter --
     async def test_list_models_no_filter(self, mock_client: AsyncMock):

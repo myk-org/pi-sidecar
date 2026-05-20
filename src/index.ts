@@ -135,7 +135,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         }
         console.log(`[sidecar] POST /sessions/${params.id}/prompt message_length=${body.message.length}`);
         const result = await store.prompt(params.id, body.message);
-        console.log(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}`);
+        console.log(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${result.error}` : ""}`);
         sendJson(res, 200, result);
         return;
       }
