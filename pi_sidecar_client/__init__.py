@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from simple_logger.logger import get_logger
 
-logger = get_logger(name=__name__, level=os.environ.get("LOG_LEVEL", "INFO"))
+logger = get_logger(name=__name__, level=os.environ.get("PI_SIDECAR_LOG_LEVEL", "INFO"))
 
 SIDECAR_URL = os.environ.get("SIDECAR_URL", "http://127.0.0.1:9100")
 DEFAULT_CWD = tempfile.gettempdir()
