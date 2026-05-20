@@ -70,9 +70,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
     const url = req.url || "/";
     const requestStart = Date.now();
 
+    console.debug(`[sidecar] ${method} ${url}`);
+
     try {
       // GET /health
       if (method === "GET" && url === "/health") {
+        console.debug(`[sidecar] Health check: ready=${store.ready}, sessions=${store.count()}`);
         if (!store.ready) {
           sendJson(res, 503, { status: "starting", message: "Model discovery in progress" });
           return;
@@ -83,13 +86,16 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
 
       // GET /models
       if (method === "GET" && url === "/models") {
-        sendJson(res, 200, { models: store.getModels() });
+        const models = store.getModels();
+        console.debug(`[sidecar] Models: count=${models.length}`);
+        sendJson(res, 200, { models });
         return;
       }
 
       // POST /models/refresh
       if (method === "POST" && url === "/models/refresh") {
         const models = await store.refreshModels();
+        console.info(`[sidecar] POST /models/refresh 200 ${Date.now() - requestStart}ms models=${models.length}`);
         sendJson(res, 200, { models });
         return;
       }
@@ -139,6 +145,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       if (method === "POST" && params) {
         console.log(`[sidecar] POST /sessions/${params.id}/abort`);
         await store.abort(params.id);
+        console.info(`[sidecar] POST /sessions/${params.id}/abort 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { aborted: true });
         return;
       }
@@ -148,10 +155,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       if (method === "DELETE" && params) {
         console.log(`[sidecar] DELETE /sessions/${params.id}`);
         store.delete(params.id);
+        console.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { deleted: true });
         return;
       }
 
+      console.debug(`[sidecar] Route not found: ${method} ${url}`);
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
@@ -162,13 +171,18 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("is busy") ? 409
         : message.includes("not found") ? 404
         : 500;
-      console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+      if (status === 500) {
+        console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms`, err);
+      } else {
+        console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+      }
       sendJson(res, status, { error: message });
     }
   });
 
   // Stale session cleanup every 10 minutes
   const cleanupInterval = setInterval(() => {
+    console.debug(`[sidecar] Running stale session cleanup`);
     store.cleanupStale(60 * 60 * 1000); // 1 hour
   }, 10 * 60 * 1000);
 
@@ -176,6 +190,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
 
   server.listen(PORT, HOST, () => {
     console.log(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
+    console.info(`[sidecar] Config: host=${HOST}, port=${PORT}, devMode=${process.env.DEV_MODE || 'false'}`);
     const watchdogUrl = options?.watchdogUrl || process.env.SIDECAR_WATCHDOG_URL;
     if (watchdogUrl) {
       stopWatchdog = startWatchdog(watchdogUrl, () => {

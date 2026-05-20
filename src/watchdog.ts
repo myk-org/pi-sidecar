@@ -24,6 +24,8 @@ export function startWatchdog(
   const maxFailures = Math.max(options?.maxFailures ?? DEFAULT_MAX_FAILURES, 1);
   const startDelayMs = Math.max(options?.startDelayMs ?? DEFAULT_START_DELAY_MS, 0);
 
+  console.info(`[watchdog] Starting watchdog for ${healthUrl} (grace=${startDelayMs}ms)`);
+
   let consecutiveFailures = 0;
   let stopped = false;
   let dead = false;
@@ -44,6 +46,7 @@ export function startWatchdog(
         const resp = await fetch(healthUrl, { signal: currentController.signal });
         if (stopped) return;
         if (resp.ok) {
+          console.debug(`[watchdog] Health check OK: url=${healthUrl}`);
           if (consecutiveFailures > 0) {
             console.log(`[watchdog] Health check recovered after ${consecutiveFailures} failure(s)`);
           }
@@ -87,5 +90,6 @@ export function startWatchdog(
     currentController?.abort();
     currentTimeout = undefined;
     currentController = undefined;
+    console.info("[watchdog] Watchdog stopped");
   };
 }

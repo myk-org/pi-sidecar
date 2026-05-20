@@ -109,6 +109,8 @@ def _map_provider_model(provider: str, model: str) -> tuple[str, str]:
     # Cursor models need the cursor: prefix
     if sidecar_provider == "acpx-cursor" and not model.startswith("cursor:"):
         sidecar_model = f"cursor:{model}"
+    if sidecar_provider != provider or sidecar_model != model:
+        logger.debug("Provider mapped: %s/%s → %s/%s", provider, model, sidecar_provider, sidecar_model)
     return sidecar_provider, sidecar_model
 
 
@@ -122,21 +124,30 @@ class SidecarClient:
 
     async def health(self) -> dict:
         """Check sidecar health."""
+        logger.debug("Checking sidecar health: url=%s", self._base_url)
         resp = await self._client.get("/health")
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        logger.debug("Sidecar health response: %s", data)
+        return data
 
     async def get_models(self) -> list[dict]:
         """Get available models."""
+        logger.debug("Fetching models from sidecar")
         resp = await self._client.get("/models")
         resp.raise_for_status()
-        return resp.json().get("models", [])
+        models = resp.json().get("models", [])
+        logger.debug("Fetched %d models from sidecar", len(models))
+        return models
 
     async def refresh_models(self) -> list[dict]:
         """Trigger model discovery and return updated list."""
+        logger.debug("Triggering model refresh on sidecar")
         resp = await self._client.post("/models/refresh")
         resp.raise_for_status()
-        return resp.json().get("models", [])
+        models = resp.json().get("models", [])
+        logger.info("Model refresh complete: %d models available", len(models))
+        return models
 
     async def create_session(
         self,
@@ -149,6 +160,15 @@ class SidecarClient:
     ) -> str:
         """Create a new AI session. Returns session_id."""
         sidecar_provider, sidecar_model = _map_provider_model(provider, model)
+        logger.debug(
+            "Creating session: provider=%s→%s, model=%s→%s, cwd=%s, custom_tools=%d",
+            provider,
+            sidecar_provider,
+            model,
+            sidecar_model,
+            cwd,
+            len(custom_tools or []),
+        )
         body: dict[str, Any] = {
             "provider": sidecar_provider,
             "model": sidecar_model,
@@ -159,10 +179,15 @@ class SidecarClient:
             body["custom_tools"] = custom_tools
         resp = await self._client.post("/sessions", json=body)
         resp.raise_for_status()
-        return resp.json()["session_id"]
+        session_id = resp.json()["session_id"]
+        logger.info(
+            "Session created: session_id=%s, provider=%s, model=%s", session_id, sidecar_provider, sidecar_model
+        )
+        return session_id
 
     async def prompt(self, session_id: str, message: str, timeout: float | None = None) -> AIResult:
         """Send a message to a session. Returns AIResult."""
+        logger.debug("Sending prompt: session=%s, message_length=%d", session_id, len(message))
         request_timeout = timeout or self._client.timeout
         resp = await self._client.post(
             f"/sessions/{session_id}/prompt",
@@ -175,6 +200,7 @@ class SidecarClient:
                 error = payload.get("error", resp.text) if isinstance(payload, dict) else resp.text
             except ValueError:
                 error = resp.text or f"HTTP {resp.status_code}"
+            logger.error("Prompt failed: session=%s, status=%d, error=%s", session_id, resp.status_code, error)
             return AIResult(success=False, text=error)
 
         data = resp.json()
@@ -187,26 +213,56 @@ class SidecarClient:
             cost_usd=usage_data.get("cost_usd"),
             duration_ms=usage_data.get("duration_ms"),
         )
+
+        # Surface error from sidecar even on HTTP 200
+        error = data.get("error")
+        if error:
+            logger.error(
+                "Prompt returned error from AI: session=%s, error=%s, text_length=%d",
+                session_id,
+                error,
+                len(data.get("text", "")),
+            )
+            return AIResult(success=False, text=error, usage=usage)
+
+        text = data.get("text", "")
+        if not text:
+            logger.warning("Prompt returned empty text: session=%s, usage=%s", session_id, usage_data)
+
+        logger.debug(
+            "Prompt completed: session=%s, text_length=%d, input_tokens=%d, output_tokens=%d, duration_ms=%s",
+            session_id,
+            len(text),
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.duration_ms,
+        )
         return AIResult(
             success=True,
-            text=data.get("text", ""),
+            text=text,
             usage=usage,
         )
 
     async def abort(self, session_id: str) -> None:
         """Abort an in-progress prompt."""
+        logger.debug("Aborting session: %s", session_id)
         resp = await self._client.post(f"/sessions/{session_id}/abort")
         resp.raise_for_status()
+        logger.info("Session aborted: %s", session_id)
 
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
+        logger.debug("Deleting session: %s", session_id)
         resp = await self._client.delete(f"/sessions/{session_id}")
         resp.raise_for_status()
+        logger.debug("Session deleted: %s", session_id)
 
     async def close(self) -> None:
         """Close the HTTP client."""
+        logger.debug("Closing sidecar client: url=%s", self._base_url)
         await self._client.aclose()
         self._closed = True
+        logger.debug("Sidecar client closed")
 
 
 # Singleton client
@@ -247,6 +303,13 @@ async def call_ai(
     - For multi-turn (peer debate), pass ``session_id`` from the
       previous result to continue the conversation.
     """
+    logger.debug(
+        "call_ai: provider=%s, model=%s, session_id=%s, prompt_length=%d",
+        ai_provider,
+        ai_model,
+        session_id or "new",
+        len(prompt),
+    )
     client = get_sidecar_client()
     created_session = False
     try:
@@ -266,7 +329,7 @@ async def call_ai(
         result.session_id = session_id
         return result
     except Exception as e:
-        logger.error("Sidecar call failed: %s", e)
+        logger.error("Sidecar call failed: %s", e, exc_info=True)
         # Clean up session if WE created it and the prompt failed
         cleanup_succeeded = False
         if created_session and session_id:
@@ -299,6 +362,7 @@ async def call_ai_once(
     preserved so the caller can retry cleanup.
     Use ``call_ai`` directly for multi-turn conversations.
     """
+    logger.debug("call_ai_once: provider=%s, model=%s, prompt_length=%d", ai_provider, ai_model, len(prompt))
     result = await call_ai(
         prompt,
         ai_provider=ai_provider,
@@ -314,13 +378,14 @@ async def call_ai_once(
             await get_sidecar_client().delete_session(result.session_id)
             result.session_id = None  # Clear so caller doesn't try to reuse
         except Exception:
-            logger.debug("Failed to cleanup session %s after call_ai_once", result.session_id, exc_info=True)
+            logger.warning("Failed to cleanup session %s after call_ai_once", result.session_id, exc_info=True)
             # Preserve session_id so caller can retry cleanup
     return result
 
 
 async def list_models(provider: str = "") -> list[dict]:
     """List available models, optionally filtered by provider."""
+    logger.debug("list_models: provider_filter=%s", provider or "none")
     client = get_sidecar_client()
     models = await client.get_models()
     if provider:
@@ -331,6 +396,7 @@ async def list_models(provider: str = "") -> list[dict]:
 
 async def check_sidecar_available() -> tuple[bool, str]:
     """Check if the sidecar service is available and ready."""
+    logger.debug("Checking sidecar availability")
     try:
         client = get_sidecar_client()
         data = await client.health()
