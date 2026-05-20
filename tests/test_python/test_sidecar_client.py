@@ -171,7 +171,7 @@ class TestSidecarClient:
 
         result = await client.prompt("sess-1", "hi")
         assert result.success is False
-        assert result.text == ""
+        assert result.text == "internal error"
         assert result.error == "internal error"
 
     # -- prompt with error field on 200 --
@@ -271,7 +271,7 @@ class TestConvenienceFunctions:
         result = await call_ai("hello", ai_provider="claude", ai_model="sonnet")
 
         assert result.success is False
-        assert result.text == ""
+        assert result.text == "boom"
         assert result.error == "boom"
         mock_client.delete_session.assert_awaited_once_with("sess-fail")
 

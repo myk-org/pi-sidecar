@@ -136,8 +136,8 @@ export class SessionStore {
     } catch (err: any) {
       this._discoveryError = err?.message || "Unknown discovery error";
       this._ready = true;  // Mark as ready but with error — don't block health forever
-      console.error(`[sidecar] Model discovery failed: ${this._discoveryError}`);
-      return this.getModels();  // Return whatever models we have
+      console.error(`[sidecar] Model discovery failed:`, err);
+      throw err;  // Rethrow so callers can handle (startup catches, POST /models/refresh returns 500)
     }
   }
 

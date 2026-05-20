@@ -202,7 +202,7 @@ class SidecarClient:
             except ValueError:
                 error = resp.text or f"HTTP {resp.status_code}"
             logger.error("Prompt failed: session=%s, status=%d, error=%s", session_id, resp.status_code, error)
-            return AIResult(success=False, text="", error=error)
+            return AIResult(success=False, text=error, error=error)
 
         data = resp.json()
         usage_data = data.get("usage", {})
@@ -341,7 +341,7 @@ async def call_ai(
                 logger.warning("Failed to cleanup leaked session %s", session_id, exc_info=True)
         return AIResult(
             success=False,
-            text="",
+            text=str(e),
             error=str(e),
             session_id=None if cleanup_succeeded else session_id,
         )
