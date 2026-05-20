@@ -225,6 +225,7 @@ export class SessionStore {
     console.log(`[sidecar] Prompt started: session=${id}, message_length=${message.length}`);
 
     const errors: string[] = [];
+    let errorsDropped = 0;
     let responseText = "";
     let textDeltaCount = 0;
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: null as number | null, duration_ms: 0 };
@@ -248,6 +249,8 @@ export class SessionStore {
         }
         if (errors.length < 10) {
           errors.push(errorMsg);
+        } else {
+          errorsDropped++;
         }
         console.error(`[sidecar] Prompt error event: session=${id}, error=${errorMsg}`);
       }
@@ -308,7 +311,7 @@ export class SessionStore {
 
     // If we got errors from the AI, surface them
     if (errors.length > 0) {
-      const errorText = errors.join("; ");
+      const errorText = errors.join("; ") + (errorsDropped > 0 ? ` [+${errorsDropped} more]` : "");
       console.error(`[sidecar] Prompt completed with errors: session=${id}, errors=${errorText}`);
       return { text: responseText, usage, error: errorText };
     }

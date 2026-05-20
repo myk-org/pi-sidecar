@@ -22,7 +22,7 @@ pi-sidecar/                        (repo root = npm package root)
 ├── src/
 │   ├── server.ts                   # CLI entry point — imports and calls startSidecar()
 │   ├── index.ts                    # HTTP server, routing, JSON helpers, startSidecar()
-│   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery
+│   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery, error surfacing
 │   └── watchdog.ts                 # Health-check poller; kills sidecar when backend is unresponsive
 ├── tests/
 │   ├── test_ts/                    # TypeScript sidecar tests

@@ -66,6 +66,7 @@ class AIResult:
     text: str
     usage: AITokenUsage | None = None
     session_id: str | None = None
+    error: str | None = None
 
     async def record_usage(
         self,
@@ -223,7 +224,7 @@ class SidecarClient:
                 error,
                 len(data.get("text", "")),
             )
-            return AIResult(success=False, text=error, usage=usage)
+            return AIResult(success=False, text=data.get("text", ""), usage=usage, error=error)
 
         text = data.get("text", "")
         if not text:
@@ -337,7 +338,7 @@ async def call_ai(
                 await client.delete_session(session_id)
                 cleanup_succeeded = True
             except Exception:
-                logger.debug("Failed to cleanup leaked session %s", session_id, exc_info=True)
+                logger.warning("Failed to cleanup leaked session %s", session_id, exc_info=True)
         return AIResult(
             success=False,
             text=str(e),

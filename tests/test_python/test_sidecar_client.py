@@ -188,7 +188,8 @@ class TestSidecarClient:
 
         result = await client.prompt("sess-1", "hi")
         assert result.success is False
-        assert result.text == "AI model returned an error during processing"
+        assert result.text == "partial output"
+        assert result.error == "AI model returned an error during processing"
         assert result.usage is not None
         assert result.usage.input_tokens == 10
 
@@ -287,12 +288,13 @@ class TestConvenienceFunctions:
     async def test_call_ai_surfaces_sidecar_error(self, mock_client: AsyncMock):
         """call_ai surfaces error field from sidecar prompt response."""
         mock_client.create_session.return_value = "sess-err"
-        mock_client.prompt.return_value = AIResult(success=False, text="AI error: rate limited")
+        mock_client.prompt.return_value = AIResult(success=False, text="partial output", error="AI error: rate limited")
 
         result = await call_ai("hello", ai_provider="gemini", ai_model="gemini-2.5-pro")
 
         assert result.success is False
-        assert "rate limited" in result.text
+        assert result.text == "partial output"
+        assert result.error == "AI error: rate limited"
         assert result.session_id == "sess-err"
 
     # -- list_models no filter --
