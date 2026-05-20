@@ -152,7 +152,8 @@ export class SessionStore {
       // (createAgentSession will resolve it via the acpx extension)
     }
 
-    console.debug(`[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, registryMatch=${!!model}, acpxMatch=${this.acpxModels.some(m => m.id === options.model) || false}`);
+    const isAcpx = !model && this.acpxModels.some(m => m.id === options.model);
+    console.debug(`[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, registryMatch=${!!model}, acpxMatch=${isAcpx}`);
 
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];

@@ -70,12 +70,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
     const url = req.url || "/";
     const requestStart = Date.now();
 
-    console.debug(`[sidecar] ${method} ${url}`);
-
     try {
       // GET /health
       if (method === "GET" && url === "/health") {
-        console.debug(`[sidecar] Health check: ready=${store.ready}, sessions=${store.count()}`);
         if (!store.ready) {
           sendJson(res, 503, { status: "starting", message: "Model discovery in progress" });
           return;
@@ -112,7 +109,6 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
           return;
         }
-        console.log(`[sidecar] POST /sessions provider=${provider} model=${model} cwd=${cwd || process.cwd()}`);
         const sessionId = await store.create({
           provider,
           model: model || "",
@@ -120,7 +116,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           cwd: cwd || process.cwd(),
           customTools: custom_tools,
         });
-        console.log(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId}`);
+        console.log(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId} provider=${provider} model=${model}`);
         sendJson(res, 201, { session_id: sessionId });
         return;
       }
@@ -143,7 +139,6 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions/:id/abort
       params = routeMatch(url, "/sessions/:id/abort");
       if (method === "POST" && params) {
-        console.log(`[sidecar] POST /sessions/${params.id}/abort`);
         await store.abort(params.id);
         console.info(`[sidecar] POST /sessions/${params.id}/abort 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { aborted: true });
@@ -153,7 +148,6 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // DELETE /sessions/:id
       params = routeMatch(url, "/sessions/:id");
       if (method === "DELETE" && params) {
-        console.log(`[sidecar] DELETE /sessions/${params.id}`);
         store.delete(params.id);
         console.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { deleted: true });
@@ -189,7 +183,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   let stopWatchdog: (() => void) | undefined;
 
   server.listen(PORT, HOST, () => {
-    console.log(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
+    console.info(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
     console.info(`[sidecar] Config: host=${HOST}, port=${PORT}, devMode=${process.env.DEV_MODE || 'false'}`);
     const watchdogUrl = options?.watchdogUrl || process.env.SIDECAR_WATCHDOG_URL;
     if (watchdogUrl) {
