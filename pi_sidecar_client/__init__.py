@@ -231,7 +231,7 @@ async def call_ai(
     ai_model: str = "",
     cwd: str | None = None,
     system_prompt: str = "",
-    ai_cli_timeout: int | None = None,
+    ai_call_timeout: int | None = None,
     session_id: str | None = None,
     custom_tools: list | None = None,
 ) -> AIResult:
@@ -260,7 +260,7 @@ async def call_ai(
             )
             created_session = True
         # Convert minutes to seconds for httpx timeout
-        timeout = ai_cli_timeout * 60.0 if ai_cli_timeout else None
+        timeout = ai_call_timeout * 60.0 if ai_call_timeout else None
         result = await client.prompt(session_id, prompt, timeout=timeout)
         # Attach session_id to result so callers can reuse or clean up
         result.session_id = session_id
@@ -289,7 +289,7 @@ async def call_ai_once(
     ai_model: str = "",
     cwd: str | None = None,
     system_prompt: str = "",
-    ai_cli_timeout: int | None = None,
+    ai_call_timeout: int | None = None,
     custom_tools: list | None = None,
 ) -> AIResult:
     """Single-shot AI call with automatic session cleanup.
@@ -305,7 +305,7 @@ async def call_ai_once(
         ai_model=ai_model,
         cwd=cwd,
         system_prompt=system_prompt,
-        ai_cli_timeout=ai_cli_timeout,
+        ai_call_timeout=ai_call_timeout,
         custom_tools=custom_tools,
     )
     # Always clean up — this is a single-shot call
