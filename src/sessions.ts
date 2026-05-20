@@ -51,10 +51,15 @@ export class SessionStore {
   private authStorage = AuthStorage.create();
   private modelRegistry = ModelRegistry.create(this.authStorage);
   private _ready = false;
+  private _discoveryError: string | null = null;
   private acpxModels: Array<{ id: string; name: string; provider: string }> = [];
 
   get ready(): boolean {
     return this._ready;
+  }
+
+  get discoveryError(): string | null {
+    return this._discoveryError;
   }
 
   count(): number {
@@ -82,6 +87,7 @@ export class SessionStore {
    */
   async refreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
     console.debug(`[sidecar] Starting model discovery...`);
+    try {
     // Create a bootstrap session to trigger extension loading.
     // Extensions like vertex-claude register models synchronously on load.
     // The session is kept alive (disposed at cleanup) to maintain extension state.
@@ -124,8 +130,15 @@ export class SessionStore {
     this.delete(bootstrapId);
 
     this._ready = true;
+    this._discoveryError = null;
     console.log(`[sidecar] Model discovery complete: ${this.getModels().length} models available`);
     return this.getModels();
+    } catch (err: any) {
+      this._discoveryError = err?.message || "Unknown discovery error";
+      this._ready = true;  // Mark as ready but with error — don't block health forever
+      console.error(`[sidecar] Model discovery failed: ${this._discoveryError}`);
+      return this.getModels();  // Return whatever models we have
+    }
   }
 
   async create(options: CreateSessionOptions): Promise<string> {
@@ -299,7 +312,14 @@ export class SessionStore {
       await entry.session.prompt(message);
     } catch (err: any) {
       console.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`);
-      throw err;
+      // If we captured partial text or error events before the rejection,
+      // return structured data instead of throwing — preserves partial state for callers
+      if (responseText || errors.length > 0) {
+        errors.push(err?.message || "Prompt rejected");
+        // fall through to structured return below
+      } else {
+        throw err;
+      }
     } finally {
       unsubscribe();
       entry.inFlight = false;

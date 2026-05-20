@@ -77,6 +77,10 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 503, { status: "starting", message: "Model discovery in progress" });
           return;
         }
+        if (store.discoveryError) {
+          sendJson(res, 200, { status: "degraded", message: `Model discovery failed: ${store.discoveryError}`, sessions: store.count() });
+          return;
+        }
         sendJson(res, 200, { status: "ok", sessions: store.count() });
         return;
       }
@@ -102,10 +106,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         const body = await parseBody(req);
         const { provider, model, system_prompt, cwd, custom_tools } = body;
         if (!provider || !system_prompt) {
+          console.warn(`[sidecar] POST /sessions 400: provider and system_prompt are required`);
           sendJson(res, 400, { error: "provider and system_prompt are required" });
           return;
         }
         if (!model) {
+          console.warn(`[sidecar] POST /sessions 400: model is required`);
           sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
           return;
         }
@@ -126,6 +132,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       if (method === "POST" && params) {
         const body = await parseBody(req);
         if (!body.message) {
+          console.warn(`[sidecar] POST /sessions/${params.id}/prompt 400: message is required`);
           sendJson(res, 400, { error: "message is required" });
           return;
         }
