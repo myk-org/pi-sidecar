@@ -22,7 +22,7 @@ pi-sidecar/                        (repo root = npm package root)
 ├── src/
 │   ├── server.ts                   # CLI entry point — imports and calls startSidecar()
 │   ├── index.ts                    # HTTP server, routing, JSON helpers, startSidecar()
-│   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery
+│   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery, error surfacing
 │   └── watchdog.ts                 # Health-check poller; kills sidecar when backend is unresponsive
 ├── tests/
 │   ├── test_ts/                    # TypeScript sidecar tests
@@ -89,6 +89,43 @@ Group imports in this order, separated by a blank line:
 1. **Node built-ins** — `node:http`, `node:crypto`, `node:child_process`
 2. **External packages** — `@earendil-works/pi-coding-agent`, `httpx`
 3. **Local imports** — `./sessions.js`, `./watchdog.js`
+
+---
+
+## Logging Standards
+
+All code paths **must** have appropriate logging. Silent failures are bugs.
+
+### Log Levels
+
+| Level | When to use | Examples |
+|-------|-------------|----------|
+| `error` | Operation failed, caller is affected | Prompt rejected, session not found, model not found, AI returned errors |
+| `warn` | Something unexpected but recoverable | Validation 400s, empty AI response, cleanup failures, extension not found |
+| `info` | Significant lifecycle events | Server started, session created/deleted/aborted, model discovery complete, request completed with timing |
+| `debug` | Request tracing and internal details | Model resolution, provider mapping, request entry, response details |
+
+### TypeScript (`src/`)
+
+- Use `console.error`, `console.warn`, `console.info`, `console.log`, `console.debug`
+- Prefix all messages with `[sidecar]` (or `[watchdog]` for watchdog)
+- Format: `[sidecar] ACTION: key=value, key=value`
+- Log timing on all mutating operations: `POST /sessions 201 10ms session=...`
+- Log full error object (not just message) for 500 errors — preserves stack trace
+- Never log sensitive data (API keys, tokens). Sanitize URLs before logging.
+
+### Python (`pi_sidecar_client/`)
+
+- Use the module logger: `logger.error()`, `logger.warning()`, `logger.info()`, `logger.debug()`
+- Log level is controlled by `PI_SIDECAR_LOG_LEVEL` env var (default: `INFO`)
+- Use `exc_info=True` on exception handlers for full stack traces
+- Use `%s` formatting (not f-strings) for lazy evaluation at debug level
+
+### Error Surfacing Rules
+
+- **Never hide errors from callers.** If the AI returns an error, surface it via the `error` field.
+- All failure paths must populate `AIResult.error` (Python) or include `error` in the response JSON (TypeScript).
+- Log every error at `error` level with enough context to debug (session ID, status code, error message).
 
 ---
 

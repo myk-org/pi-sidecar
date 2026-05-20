@@ -14,6 +14,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_FAILURES = 6;
 const DEFAULT_START_DELAY_MS = 60_000;
 
+function sanitizeUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    u.search = "";
+    u.hash = "";
+    u.username = "";
+    u.password = "";
+    return u.toString();
+  } catch {
+    return "[invalid-url]";
+  }
+}
+
 export function startWatchdog(
   healthUrl: string,
   onDead: () => void,
@@ -23,6 +36,8 @@ export function startWatchdog(
   const timeoutMs = Math.max(options?.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1000);
   const maxFailures = Math.max(options?.maxFailures ?? DEFAULT_MAX_FAILURES, 1);
   const startDelayMs = Math.max(options?.startDelayMs ?? DEFAULT_START_DELAY_MS, 0);
+
+  console.info(`[watchdog] Starting watchdog for ${sanitizeUrl(healthUrl)} (grace=${startDelayMs}ms)`);
 
   let consecutiveFailures = 0;
   let stopped = false;
@@ -44,6 +59,7 @@ export function startWatchdog(
         const resp = await fetch(healthUrl, { signal: currentController.signal });
         if (stopped) return;
         if (resp.ok) {
+          console.debug(`[watchdog] Health check OK: url=${sanitizeUrl(healthUrl)}`);
           if (consecutiveFailures > 0) {
             console.log(`[watchdog] Health check recovered after ${consecutiveFailures} failure(s)`);
           }
@@ -87,5 +103,6 @@ export function startWatchdog(
     currentController?.abort();
     currentTimeout = undefined;
     currentController = undefined;
+    console.info("[watchdog] Watchdog stopped");
   };
 }

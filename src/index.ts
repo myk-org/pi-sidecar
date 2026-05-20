@@ -77,19 +77,30 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 503, { status: "starting", message: "Model discovery in progress" });
           return;
         }
+        if (store.discoveryError) {
+          sendJson(res, 200, {
+            status: "degraded",
+            message: "Model discovery failed",
+            sessions: store.count(),
+          });
+          return;
+        }
         sendJson(res, 200, { status: "ok", sessions: store.count() });
         return;
       }
 
       // GET /models
       if (method === "GET" && url === "/models") {
-        sendJson(res, 200, { models: store.getModels() });
+        const models = store.getModels();
+        console.debug(`[sidecar] Models: count=${models.length}`);
+        sendJson(res, 200, { models });
         return;
       }
 
       // POST /models/refresh
       if (method === "POST" && url === "/models/refresh") {
         const models = await store.refreshModels();
+        console.info(`[sidecar] POST /models/refresh 200 ${Date.now() - requestStart}ms models=${models.length}`);
         sendJson(res, 200, { models });
         return;
       }
@@ -99,14 +110,15 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         const body = await parseBody(req);
         const { provider, model, system_prompt, cwd, custom_tools } = body;
         if (!provider || !system_prompt) {
+          console.warn(`[sidecar] POST /sessions 400: provider and system_prompt are required`);
           sendJson(res, 400, { error: "provider and system_prompt are required" });
           return;
         }
         if (!model) {
+          console.warn(`[sidecar] POST /sessions 400: model is required`);
           sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
           return;
         }
-        console.log(`[sidecar] POST /sessions provider=${provider} model=${model} cwd=${cwd || process.cwd()}`);
         const sessionId = await store.create({
           provider,
           model: model || "",
@@ -114,7 +126,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           cwd: cwd || process.cwd(),
           customTools: custom_tools,
         });
-        console.log(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId}`);
+        console.log(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId} provider=${provider} model=${model}`);
         sendJson(res, 201, { session_id: sessionId });
         return;
       }
@@ -124,12 +136,13 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       if (method === "POST" && params) {
         const body = await parseBody(req);
         if (!body.message) {
+          console.warn(`[sidecar] POST /sessions/${params.id}/prompt 400: message is required`);
           sendJson(res, 400, { error: "message is required" });
           return;
         }
         console.log(`[sidecar] POST /sessions/${params.id}/prompt message_length=${body.message.length}`);
         const result = await store.prompt(params.id, body.message);
-        console.log(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}`);
+        console.log(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${result.error}` : ""}`);
         sendJson(res, 200, result);
         return;
       }
@@ -137,8 +150,8 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions/:id/abort
       params = routeMatch(url, "/sessions/:id/abort");
       if (method === "POST" && params) {
-        console.log(`[sidecar] POST /sessions/${params.id}/abort`);
         await store.abort(params.id);
+        console.info(`[sidecar] POST /sessions/${params.id}/abort 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { aborted: true });
         return;
       }
@@ -146,12 +159,13 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // DELETE /sessions/:id
       params = routeMatch(url, "/sessions/:id");
       if (method === "DELETE" && params) {
-        console.log(`[sidecar] DELETE /sessions/${params.id}`);
         store.delete(params.id);
+        console.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { deleted: true });
         return;
       }
 
+      console.debug(`[sidecar] Route not found: ${method} ${url}`);
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
@@ -162,20 +176,26 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("is busy") ? 409
         : message.includes("not found") ? 404
         : 500;
-      console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+      if (status === 500) {
+        console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms`, err);
+      } else {
+        console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+      }
       sendJson(res, status, { error: message });
     }
   });
 
   // Stale session cleanup every 10 minutes
   const cleanupInterval = setInterval(() => {
+    console.debug(`[sidecar] Running stale session cleanup`);
     store.cleanupStale(60 * 60 * 1000); // 1 hour
   }, 10 * 60 * 1000);
 
   let stopWatchdog: (() => void) | undefined;
 
   server.listen(PORT, HOST, () => {
-    console.log(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
+    console.info(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
+    console.info(`[sidecar] Config: host=${HOST}, port=${PORT}, devMode=${process.env.DEV_MODE || 'false'}`);
     const watchdogUrl = options?.watchdogUrl || process.env.SIDECAR_WATCHDOG_URL;
     if (watchdogUrl) {
       stopWatchdog = startWatchdog(watchdogUrl, () => {

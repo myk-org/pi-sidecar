@@ -30,9 +30,13 @@ All endpoints accept/return JSON. Default base URL: `http://127.0.0.1:9100`.
 | `GET` | `/models` | List all discovered models. |
 | `POST` | `/models/refresh` | Re-run model discovery and return updated list. |
 | `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, custom_tools?}` → `{session_id}` |
-| `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage}` |
+| `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage, error?}` |
 | `POST` | `/sessions/:id/abort` | Abort an in-progress prompt. |
 | `DELETE` | `/sessions/:id` | Delete a session and free resources. |
+
+> **`POST /sessions/:id/prompt` — error field:**
+>
+> The response includes an optional `error` string field, present when the AI returned errors during processing. When `error` is set, `text` may still contain partial output. Python client callers: when `error` is present, `AIResult.success` will be `False`.
 
 ## TypeScript Usage
 
@@ -109,6 +113,18 @@ all_models = await list_models()
 gemini_only = await list_models(provider="gemini")
 ```
 
+### Debugging
+
+Enable debug logs to trace all HTTP requests and responses:
+
+```python
+import os
+os.environ["PI_SIDECAR_LOG_LEVEL"] = "DEBUG"
+
+from pi_sidecar_client import call_ai_once
+# All client operations will now log at DEBUG level
+```
+
 ## Testing
 
 **TypeScript sidecar:**
@@ -145,6 +161,7 @@ See the [`examples/`](examples/) directory for usage patterns:
 |----------|---------|-------------|
 | `SIDECAR_PORT` | `9100` | HTTP listen port |
 | `SIDECAR_URL` | `http://127.0.0.1:9100` | Base URL used by the Python client |
+| `PI_SIDECAR_LOG_LEVEL` | `INFO` | Python client log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `DEV_MODE` | `false` | Set `true` to bind `0.0.0.0` instead of `127.0.0.1` |
 | `ACPX_AGENTS` | *(empty)* | Comma-separated list of acpx agents to discover models from (e.g. `cursor`) |
 | `SIDECAR_ACPX_EXTENSION_PATH` | auto-resolved via `require.resolve` from `pi-orchestrator-config` | Path to the acpx provider extension |

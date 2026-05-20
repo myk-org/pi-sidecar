@@ -51,10 +51,15 @@ export class SessionStore {
   private authStorage = AuthStorage.create();
   private modelRegistry = ModelRegistry.create(this.authStorage);
   private _ready = false;
+  private _discoveryError: string | null = null;
   private acpxModels: Array<{ id: string; name: string; provider: string }> = [];
 
   get ready(): boolean {
     return this._ready;
+  }
+
+  get discoveryError(): string | null {
+    return this._discoveryError;
   }
 
   count(): number {
@@ -81,6 +86,8 @@ export class SessionStore {
    * Called on startup — /health returns ok only after this finishes.
    */
   async refreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
+    console.debug(`[sidecar] Starting model discovery...`);
+    try {
     // Create a bootstrap session to trigger extension loading.
     // Extensions like vertex-claude register models synchronously on load.
     // The session is kept alive (disposed at cleanup) to maintain extension state.
@@ -123,8 +130,15 @@ export class SessionStore {
     this.delete(bootstrapId);
 
     this._ready = true;
+    this._discoveryError = null;
     console.log(`[sidecar] Model discovery complete: ${this.getModels().length} models available`);
     return this.getModels();
+    } catch (err: any) {
+      this._discoveryError = err?.message || "Unknown discovery error";
+      this._ready = true;  // Mark as ready but with error — don't block health forever
+      console.error(`[sidecar] Model discovery failed:`, err);
+      throw err;  // Rethrow so callers can handle (startup catches, POST /models/refresh returns 500)
+    }
   }
 
   async create(options: CreateSessionOptions): Promise<string> {
@@ -150,6 +164,9 @@ export class SessionStore {
       // acpx model found — proceed without a registry model object
       // (createAgentSession will resolve it via the acpx extension)
     }
+
+    const isAcpx = !model && this.acpxModels.some(m => m.id === options.model);
+    console.debug(`[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, registryMatch=${!!model}, acpxMatch=${isAcpx}`);
 
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];
@@ -207,7 +224,7 @@ export class SessionStore {
     return id;
   }
 
-  async prompt(id: string, message: string): Promise<{ text: string; usage: any }> {
+  async prompt(id: string, message: string): Promise<{ text: string; usage: any; error?: string }> {
     const entry = this.sessions.get(id);
     if (!entry) throw new Error(`Session ${id} not found`);
 
@@ -220,12 +237,36 @@ export class SessionStore {
 
     console.log(`[sidecar] Prompt started: session=${id}, message_length=${message.length}`);
 
+    const errors: string[] = [];
+    let errorsDropped = 0;
     let responseText = "";
     let textDeltaCount = 0;
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: null as number | null, duration_ms: 0 };
     const startTime = Date.now();
 
     const unsubscribe = entry.session.subscribe((event) => {
+      // Pi SDK event types don't export the error variant — cast is necessary
+      if ((event as any).type === "error") {
+        const errPayload = (event as any).error;
+        let errorMsg: string;
+        if (typeof errPayload === "string") {
+          errorMsg = errPayload;
+        } else if (errPayload?.message) {
+          errorMsg = errPayload.message;
+        } else {
+          try {
+            errorMsg = JSON.stringify(errPayload);
+          } catch {
+            errorMsg = "[unstringifiable error]";
+          }
+        }
+        if (errors.length < 10) {
+          errors.push(errorMsg);
+        } else {
+          errorsDropped++;
+        }
+        console.error(`[sidecar] Prompt error event: session=${id}, error=${errorMsg}`);
+      }
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         responseText += event.assistantMessageEvent.delta;
         textDeltaCount++;
@@ -270,8 +311,20 @@ export class SessionStore {
     try {
       await entry.session.prompt(message);
     } catch (err: any) {
-      console.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`);
-      throw err;
+      console.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`, err);
+      // If we captured partial text or error events before the rejection,
+      // return structured data instead of throwing — preserves partial state for callers
+      if (responseText || errors.length > 0) {
+        const rejectionError = err?.message || "Prompt rejected";
+        if (errors.length < 10) {
+          errors.push(rejectionError);
+        } else {
+          errorsDropped++;
+        }
+        // fall through to structured return below
+      } else {
+        throw err;
+      }
     } finally {
       unsubscribe();
       entry.inFlight = false;
@@ -281,13 +334,27 @@ export class SessionStore {
     usage.duration_ms = Date.now() - startTime;
     console.log(`[sidecar] Prompt completed: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration=${usage.duration_ms}ms`);
 
+    // If we got errors from the AI, surface them
+    if (errors.length > 0) {
+      const errorText = errors.join("; ") + (errorsDropped > 0 ? ` [+${errorsDropped} more]` : "");
+      console.error(`[sidecar] Prompt completed with errors: session=${id}, errors=${errorText}`);
+      return { text: responseText, usage, error: errorText };
+    }
+
+    // Empty text is valid for tool-only responses — warn but don't error
+    if (!responseText) {
+      console.warn(`[sidecar] AI returned empty text: session=${id}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}`);
+    }
+
     return { text: responseText, usage };
   }
 
   async abort(id: string): Promise<void> {
     const entry = this.sessions.get(id);
     if (!entry) throw new Error(`Session ${id} not found`);
+    console.debug(`[sidecar] Aborting session: ${id}, inFlight=${entry.inFlight}`);
     await entry.session.abort();
+    console.info(`[sidecar] Session aborted: ${id}`);
   }
 
   delete(id: string): void {
@@ -300,23 +367,32 @@ export class SessionStore {
   }
 
   disposeAll(): void {
+    let count = 0;
     for (const [id, entry] of this.sessions) {
       console.log(`[sidecar] Disposing session: ${id}`);
       entry.session.dispose();
+      count++;
     }
     this.sessions.clear();
+    console.info(`[sidecar] All sessions disposed (${count} total)`);
   }
 
-  cleanupStale(maxAge: number): void {
+  cleanupStale(maxAge: number): number {
     const now = Date.now();
+    let cleaned = 0;
     for (const [id, entry] of this.sessions) {
       if (entry.inFlight) continue;
       if (now - entry.lastActivity > maxAge) {
         console.log(`[sidecar] Cleaning up stale session: ${id}`);
         entry.session.dispose();
         this.sessions.delete(id);
+        cleaned++;
       }
     }
+    if (cleaned > 0) {
+      console.info(`[sidecar] Stale session cleanup: removed ${cleaned} session(s), ${this.sessions.size} remaining`);
+    }
+    return cleaned;
   }
 }
 
