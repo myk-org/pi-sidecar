@@ -78,7 +78,11 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           return;
         }
         if (store.discoveryError) {
-          sendJson(res, 200, { status: "degraded", message: `Model discovery failed: ${store.discoveryError}`, sessions: store.count() });
+          sendJson(res, 200, {
+            status: "degraded",
+            message: "Model discovery failed",
+            sessions: store.count(),
+          });
           return;
         }
         sendJson(res, 200, { status: "ok", sessions: store.count() });

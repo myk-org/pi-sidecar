@@ -18,6 +18,7 @@ function sanitizeUrl(raw: string): string {
   try {
     const u = new URL(raw);
     u.search = "";
+    u.hash = "";
     u.username = "";
     u.password = "";
     return u.toString();

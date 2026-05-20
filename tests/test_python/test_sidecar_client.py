@@ -175,7 +175,7 @@ class TestSidecarClient:
         assert result.error == "internal error"
 
     # -- prompt with error field on 200 --
-    async def test_client_prompt_with_error_field(self, client: SidecarClient):
+    async def test_client_prompt_with_error_field(self, client: SidecarClient) -> None:
         """Prompt returns success=False when sidecar response contains error field."""
         mock_resp = _mock_response(
             200,
@@ -195,7 +195,7 @@ class TestSidecarClient:
         assert result.usage.input_tokens == 10
 
     # -- prompt empty text --
-    async def test_client_prompt_empty_text(self, client: SidecarClient):
+    async def test_client_prompt_empty_text(self, client: SidecarClient) -> None:
         """Prompt returns success=True with empty text (valid for tool-only responses)."""
         mock_resp = _mock_response(
             200,
@@ -287,7 +287,7 @@ class TestConvenienceFunctions:
         mock_client.delete_session.assert_awaited_once_with("sess-once")
 
     # -- call_ai surfaces sidecar error --
-    async def test_call_ai_surfaces_sidecar_error(self, mock_client: AsyncMock):
+    async def test_call_ai_surfaces_sidecar_error(self, mock_client: AsyncMock) -> None:
         """call_ai surfaces error field from sidecar prompt response."""
         mock_client.create_session.return_value = "sess-err"
         mock_client.prompt.return_value = AIResult(success=False, text="partial output", error="AI error: rate limited")

@@ -311,11 +311,16 @@ export class SessionStore {
     try {
       await entry.session.prompt(message);
     } catch (err: any) {
-      console.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`);
+      console.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`, err);
       // If we captured partial text or error events before the rejection,
       // return structured data instead of throwing — preserves partial state for callers
       if (responseText || errors.length > 0) {
-        errors.push(err?.message || "Prompt rejected");
+        const rejectionError = err?.message || "Prompt rejected";
+        if (errors.length < 10) {
+          errors.push(rejectionError);
+        } else {
+          errorsDropped++;
+        }
         // fall through to structured return below
       } else {
         throw err;
