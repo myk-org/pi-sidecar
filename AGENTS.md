@@ -173,3 +173,7 @@ Sessions accept an optional `custom_tools` array at creation time. The default t
 ### 4. Localhost-only by default (trust model)
 
 The HTTP server binds to `127.0.0.1` unless `DEV_MODE=true` (which opens `0.0.0.0`). There is **no authentication** on the sidecar API — security relies on the network boundary. Do not add auth; instead, keep the server local and use the Python client from the same host.
+
+### 5. ACPX model discovery uses `acpx/runtime` library, not CLI
+
+Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library API (`createAcpRuntime` → `ensureSession` → `getStatus`) instead of spawning `acpx --model __list__` as a subprocess and parsing stderr. The library approach is more reliable (no text parsing), provides proper error handling, and returns model IDs with their full bracket-notation options (e.g. `gpt-5.4[context=272k,reasoning=medium]`). Discovery has a 30 s timeout per agent. The `getModels()` method deduplicates builtin placeholder models against discovered ACPX models by comparing base IDs (stripping bracket suffixes).
