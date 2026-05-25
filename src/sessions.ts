@@ -15,6 +15,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { getModel } from "@earendil-works/pi-ai";
+import { logger } from "./logger.js";
 const require = createRequire(import.meta.url);
 
 /** Strip bracket suffixes from model IDs for display or comparison (e.g. "cursor:default[]" → "cursor:default"). */
@@ -33,6 +34,7 @@ const DISCOVERY_TIMEOUT_MS = 30_000;
  * top-level imports outside Pi's extension loader).
  */
 async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; name: string; provider: string }>> {
+  logger.debug(`[sidecar] Discovery starting: agent=${agent}`);
   if (!/^[a-z0-9_-]+$/i.test(agent)) {
     throw new Error(`Invalid agent name: ${agent}`);
   }
@@ -81,7 +83,7 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
     clearTimeout(timer!);
     return result;
   } catch (err) {
-    console.warn(`[sidecar] Discovery failed: agent=${agent}`, err);
+    logger.warn(`[sidecar] Discovery failed: agent=${agent}`, err);
     return [];
   } finally {
     if (timer) clearTimeout(timer);
@@ -91,11 +93,11 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
     }
     if (handle) {
       await runtime.close({ handle, reason: "discovery complete" }).catch((err: any) => {
-        console.debug(`[sidecar] Discovery close failed: agent=${agent}`, err);
+        logger.debug(`[sidecar] Discovery close failed: agent=${agent}`, err);
       });
     }
     await rm(stateDir, { recursive: true, force: true }).catch((err: any) => {
-      console.debug(`[sidecar] Discovery cleanup failed: agent=${agent}, stateDir=${stateDir}`, err);
+      logger.debug(`[sidecar] Discovery cleanup failed: agent=${agent}, stateDir=${stateDir}`, err);
     });
   }
 }
@@ -108,7 +110,7 @@ function resolveExtensionPath(envVar: string, packageName: string, entryFile: st
     const pkgJson = require.resolve(`${packageName}/package.json`);
     return join(dirname(pkgJson), entryFile);
   } catch (err) {
-    console.debug(`[sidecar] Could not resolve ${packageName}:`, err);
+    logger.debug(`[sidecar] Could not resolve ${packageName}:`, err);
     return "";
   }
 }
@@ -166,6 +168,10 @@ export class SessionStore {
     // Compare by stripping bracket suffixes (e.g. "cursor:default[]" base is "cursor:default").
     const acpxBaseIds = new Set(this.acpxModels.map((m) => baseModelId(m.id)));
     const dedupedBuiltins = builtinModels.filter((m) => !acpxBaseIds.has(baseModelId(m.id)));
+    const dedupedCount = builtinModels.length - dedupedBuiltins.length;
+    if (dedupedCount > 0) {
+      logger.debug(`[sidecar] Models deduped: builtin=${builtinModels.length}, acpx=${this.acpxModels.length}, removed=${dedupedCount}, total=${dedupedBuiltins.length + this.acpxModels.length}`);
+    }
 
     return [...dedupedBuiltins, ...this.acpxModels];
   }
@@ -175,7 +181,7 @@ export class SessionStore {
    * Called on startup — /health returns ok only after this finishes.
    */
   async refreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
-    console.debug(`[sidecar] Starting model discovery...`);
+    logger.debug(`[sidecar] Starting model discovery...`);
     try {
       // Create a bootstrap session to trigger extension loading.
       // Extensions like vertex-claude register models synchronously on load.
@@ -186,7 +192,7 @@ export class SessionStore {
         systemPrompt: "bootstrap",
         cwd: "/tmp",
       });
-      console.log(`[sidecar] Bootstrap session created for extension loading`);
+      logger.log(`[sidecar] Bootstrap session created for extension loading`);
 
       // Discover acpx models using the extension's library-based discovery
       const agents = (process.env.ACPX_AGENTS || "")
@@ -195,7 +201,7 @@ export class SessionStore {
         .filter((a) => a.length > 0);
 
       if (agents.length > 0) {
-        console.log(`[sidecar] Discovering models for ACPX agents: ${agents.join(", ")}`);
+        logger.log(`[sidecar] Discovering models for ACPX agents: ${agents.join(", ")}`);
         const results = await Promise.allSettled(
           agents.map((agent) => discoverAcpxModels(agent)),
         );
@@ -206,11 +212,11 @@ export class SessionStore {
           const agent = agents[i];
           if (result.status === "fulfilled" && result.value.length > 0) {
             discoveredModels.push(...result.value);
-            console.log(`[sidecar] acpx-${agent}: ${result.value.length} models discovered`);
+            logger.log(`[sidecar] acpx-${agent}: ${result.value.length} models discovered`);
           } else if (result.status === "rejected") {
-            console.error(`[sidecar] acpx-${agent}: discovery failed:`, result.reason);
+            logger.error(`[sidecar] acpx-${agent}: discovery failed:`, result.reason);
           } else {
-            console.warn(`[sidecar] acpx-${agent}: no models discovered`);
+            logger.warn(`[sidecar] acpx-${agent}: no models discovered`);
           }
         }
         this.acpxModels = discoveredModels;
@@ -221,12 +227,12 @@ export class SessionStore {
 
       this._ready = true;
       this._discoveryError = null;
-      console.log(`[sidecar] Model discovery complete: ${this.getModels().length} models available`);
+      logger.log(`[sidecar] Model discovery complete: ${this.getModels().length} models available`);
       return this.getModels();
     } catch (err: any) {
       this._discoveryError = err?.message || "Unknown discovery error";
       this._ready = true;  // Mark as ready but with error — don't block health forever
-      console.error(`[sidecar] Model discovery failed:`, err);
+      logger.error(`[sidecar] Model discovery failed:`, err);
       throw err;  // Rethrow so callers can handle (startup catches, POST /models/refresh returns 500)
     }
   }
@@ -256,7 +262,7 @@ export class SessionStore {
     }
 
     const isAcpx = !model && this.acpxModels.some((m) => m.id === options.model);
-    console.debug(`[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, registryMatch=${!!model}, acpxMatch=${isAcpx}`);
+    logger.debug(`[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, registryMatch=${!!model}, acpxMatch=${isAcpx}`);
 
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];
@@ -264,21 +270,21 @@ export class SessionStore {
       try {
         accessSync(ACPX_EXTENSION);
         extensionPaths.push(ACPX_EXTENSION);
-        console.log(`[sidecar] Extension found: ${ACPX_EXTENSION}`);
+        logger.log(`[sidecar] Extension found: ${ACPX_EXTENSION}`);
       } catch (err) {
-        console.warn(`[sidecar] ACPX extension not found at ${ACPX_EXTENSION}:`, err);
+        logger.warn(`[sidecar] ACPX extension not found at ${ACPX_EXTENSION}:`, err);
       }
     }
     if (VERTEX_EXTENSION) {
       try {
         accessSync(VERTEX_EXTENSION);
         extensionPaths.push(VERTEX_EXTENSION);
-        console.log(`[sidecar] Extension found: ${VERTEX_EXTENSION}`);
+        logger.log(`[sidecar] Extension found: ${VERTEX_EXTENSION}`);
       } catch (err) {
-        console.warn(`[sidecar] Vertex extension not found at ${VERTEX_EXTENSION}:`, err);
+        logger.warn(`[sidecar] Vertex extension not found at ${VERTEX_EXTENSION}:`, err);
       }
     }
-    console.log(`[sidecar] Loading ${extensionPaths.length} extensions`);
+    logger.log(`[sidecar] Loading ${extensionPaths.length} extensions`);
 
     // Build custom tools from config
     const customTools = options.customTools || [];
@@ -295,6 +301,7 @@ export class SessionStore {
       systemPromptOverride: () => options.systemPrompt,
     });
     await loader.reload();
+    logger.debug(`[sidecar] Session setup: id=${id}, extensions=${extensionPaths.length}, tools=${customTools.length} custom, cwd=${options.cwd}`);
 
     const { session } = await createAgentSession({
       cwd: options.cwd,
@@ -310,7 +317,7 @@ export class SessionStore {
     });
 
     this.sessions.set(id, { session, lastActivity: Date.now(), inFlight: false });
-    console.log(`[sidecar] Session created: ${id} (provider=${options.provider}, model=${options.model}, cwd=${options.cwd}, tools=${options.customTools?.length ?? 0} custom)`);
+    logger.log(`[sidecar] Session created: ${id} (provider=${options.provider}, model=${options.model}, cwd=${options.cwd}, tools=${options.customTools?.length ?? 0} custom)`);
     return id;
   }
 
@@ -325,7 +332,7 @@ export class SessionStore {
     entry.lastActivity = Date.now();
     entry.inFlight = true;
 
-    console.log(`[sidecar] Prompt started: session=${id}, message_length=${message.length}`);
+    logger.log(`[sidecar] Prompt started: session=${id}, message_length=${message.length}`);
 
     const errors: string[] = [];
     let errorsDropped = 0;
@@ -355,7 +362,7 @@ export class SessionStore {
         } else {
           errorsDropped++;
         }
-        console.error(`[sidecar] Prompt error event: session=${id}, error=${errorMsg}`);
+        logger.error(`[sidecar] Prompt error event: session=${id}, error=${errorMsg}`);
       }
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         responseText += event.assistantMessageEvent.delta;
@@ -382,7 +389,7 @@ export class SessionStore {
               : typeof m.content;
             return `${m.role}(${contentTypes})`;
           }).join(" → ");
-          console.warn(`[sidecar] No text_delta events captured (${textDeltaCount} deltas). Messages: ${msgSummary}. Extracting from agent_end messages`);
+          logger.warn(`[sidecar] No text_delta events captured (${textDeltaCount} deltas). Messages: ${msgSummary}. Extracting from agent_end messages`);
           for (const msg of [...event.messages].reverse()) {
             if (msg.role === "assistant" && msg.content) {
               const textContent = Array.isArray(msg.content)
@@ -401,7 +408,7 @@ export class SessionStore {
     try {
       await entry.session.prompt(message);
     } catch (err: any) {
-      console.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`, err);
+      logger.error(`[sidecar] Prompt failed: session=${id}, error=${err?.message}`, err);
       // If we captured partial text or error events before the rejection,
       // return structured data instead of throwing — preserves partial state for callers
       if (responseText || errors.length > 0) {
@@ -422,18 +429,18 @@ export class SessionStore {
     }
 
     usage.duration_ms = Date.now() - startTime;
-    console.log(`[sidecar] Prompt completed: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration=${usage.duration_ms}ms`);
+    logger.log(`[sidecar] Prompt completed: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration=${usage.duration_ms}ms`);
 
     // If we got errors from the AI, surface them
     if (errors.length > 0) {
       const errorText = errors.join("; ") + (errorsDropped > 0 ? ` [+${errorsDropped} more]` : "");
-      console.error(`[sidecar] Prompt completed with errors: session=${id}, errors=${errorText}`);
+      logger.error(`[sidecar] Prompt completed with errors: session=${id}, errors=${errorText}`);
       return { text: responseText, usage, error: errorText };
     }
 
     // Empty text is valid for tool-only responses — warn but don't error
     if (!responseText) {
-      console.warn(`[sidecar] AI returned empty text: session=${id}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}`);
+      logger.warn(`[sidecar] AI returned empty text: session=${id}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}`);
     }
 
     return { text: responseText, usage };
@@ -442,9 +449,9 @@ export class SessionStore {
   async abort(id: string): Promise<void> {
     const entry = this.sessions.get(id);
     if (!entry) throw new Error(`Session ${id} not found`);
-    console.debug(`[sidecar] Aborting session: ${id}, inFlight=${entry.inFlight}`);
+    logger.debug(`[sidecar] Aborting session: ${id}, inFlight=${entry.inFlight}`);
     await entry.session.abort();
-    console.info(`[sidecar] Session aborted: ${id}`);
+    logger.info(`[sidecar] Session aborted: ${id}`);
   }
 
   delete(id: string): void {
@@ -452,19 +459,21 @@ export class SessionStore {
     if (entry) {
       entry.session.dispose();
       this.sessions.delete(id);
-      console.log(`[sidecar] Session deleted: ${id}`);
+      logger.log(`[sidecar] Session deleted: ${id}`);
+    } else {
+      logger.debug(`[sidecar] Session delete skipped (not found): ${id}`);
     }
   }
 
   disposeAll(): void {
     let count = 0;
     for (const [id, entry] of this.sessions) {
-      console.log(`[sidecar] Disposing session: ${id}`);
+      logger.log(`[sidecar] Disposing session: ${id}`);
       entry.session.dispose();
       count++;
     }
     this.sessions.clear();
-    console.info(`[sidecar] All sessions disposed (${count} total)`);
+    logger.info(`[sidecar] All sessions disposed (${count} total)`);
   }
 
   cleanupStale(maxAge: number): number {
@@ -473,14 +482,16 @@ export class SessionStore {
     for (const [id, entry] of this.sessions) {
       if (entry.inFlight) continue;
       if (now - entry.lastActivity > maxAge) {
-        console.log(`[sidecar] Cleaning up stale session: ${id}`);
+        logger.log(`[sidecar] Cleaning up stale session: ${id}`);
         entry.session.dispose();
         this.sessions.delete(id);
         cleaned++;
       }
     }
     if (cleaned > 0) {
-      console.info(`[sidecar] Stale session cleanup: removed ${cleaned} session(s), ${this.sessions.size} remaining`);
+      logger.info(`[sidecar] Stale session cleanup: removed ${cleaned} session(s), ${this.sessions.size} remaining`);
+    } else {
+      logger.debug(`[sidecar] Stale session cleanup: none stale, ${this.sessions.size} active`);
     }
     return cleaned;
   }

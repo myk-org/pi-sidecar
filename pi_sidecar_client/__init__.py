@@ -122,6 +122,7 @@ class SidecarClient:
         self._base_url = base_url.rstrip("/")
         self._client = httpx.AsyncClient(base_url=self._base_url, timeout=600.0)
         self._closed = False
+        logger.debug("SidecarClient created: url=%s, timeout=600s", self._base_url)
 
     async def health(self) -> dict:
         """Check sidecar health."""
@@ -275,6 +276,7 @@ def get_sidecar_client() -> SidecarClient:
     global _client
     if _client is None or _client._closed:
         _client = SidecarClient()
+        logger.debug("Created new sidecar client: url=%s", _client._base_url)
     return _client
 
 
@@ -323,11 +325,16 @@ async def call_ai(
                 custom_tools=custom_tools,
             )
             created_session = True
+        else:
+            logger.debug("call_ai: reusing existing session=%s", session_id)
         # Convert minutes to seconds for httpx timeout
         timeout = ai_call_timeout * 60.0 if ai_call_timeout else None
         result = await client.prompt(session_id, prompt, timeout=timeout)
         # Attach session_id to result so callers can reuse or clean up
         result.session_id = session_id
+        logger.debug(
+            "call_ai complete: session=%s, success=%s, text_length=%d", session_id, result.success, len(result.text)
+        )
         return result
     except Exception as e:
         logger.error("Sidecar call failed: %s", e, exc_info=True)
@@ -382,6 +389,7 @@ async def call_ai_once(
         except Exception:
             logger.warning("Failed to cleanup session %s after call_ai_once", result.session_id, exc_info=True)
             # Preserve session_id so caller can retry cleanup
+    logger.debug("call_ai_once complete: success=%s, text_length=%d", result.success, len(result.text))
     return result
 
 
@@ -393,6 +401,7 @@ async def list_models(provider: str = "") -> list[dict]:
     if provider:
         sidecar_provider = _PROVIDER_MAP.get(provider, provider)
         models = [m for m in models if m.get("provider") == sidecar_provider]
+    logger.debug("list_models: returned %d models", len(models))
     return models
 
 
@@ -403,9 +412,16 @@ async def check_sidecar_available() -> tuple[bool, str]:
         client = get_sidecar_client()
         data = await client.health()
         if data.get("status") == "ok":
+            logger.info("Sidecar is ready: url=%s", client._base_url)
             return True, "Sidecar is ready"
         if data.get("status") == "starting":
+            logger.info(
+                "Sidecar starting: url=%s, message=%s",
+                client._base_url,
+                data.get("message", "model discovery in progress"),
+            )
             return False, f"Sidecar starting: {data.get('message', 'model discovery in progress')}"
+        logger.warning("Sidecar unhealthy: url=%s, data=%s", client._base_url, data)
         return False, f"Sidecar unhealthy: {data}"
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 503:
@@ -414,8 +430,10 @@ async def check_sidecar_available() -> tuple[bool, str]:
                 return False, f"Sidecar starting: {data.get('message', 'model discovery in progress')}"
             except ValueError:
                 pass
+        logger.warning("Sidecar unhealthy: url=%s, status=%d", client._base_url, e.response.status_code)
         return False, f"Sidecar unhealthy (HTTP {e.response.status_code})"
     except Exception as e:
+        logger.error("Sidecar unavailable: url=%s, error=%s", SIDECAR_URL, e)
         return False, f"Sidecar unavailable: {e}"
 
 
@@ -426,6 +444,7 @@ async def run_parallel_with_limit(
     """Run async tasks in parallel with concurrency limit."""
     if max_concurrency < 1:
         raise ValueError("max_concurrency must be >= 1")
+    logger.debug("Running %d tasks with max_concurrency=%d", len(tasks), max_concurrency)
 
     semaphore = asyncio.Semaphore(max_concurrency)
 
@@ -433,4 +452,7 @@ async def run_parallel_with_limit(
         async with semaphore:
             return await coro
 
-    return await asyncio.gather(*(limited(t) for t in tasks), return_exceptions=True)
+    results = await asyncio.gather(*(limited(t) for t in tasks), return_exceptions=True)
+    failures = sum(1 for r in results if isinstance(r, BaseException))
+    logger.debug("Parallel tasks complete: total=%d, failures=%d", len(results), failures)
+    return results
