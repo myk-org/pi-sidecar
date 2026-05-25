@@ -7,7 +7,7 @@ A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs
 | Package | Language | Install |
 |---------|----------|---------|
 | `@myk-org/pi-sidecar` | TypeScript | `npm install @myk-org/pi-sidecar` |
-| `pi-sidecar-client` | Python ≥ 3.10 | `pip install pi-sidecar-client` |
+| `pi-sidecar-client` | Python ≥ 3.10 | `uv pip install pi-sidecar-client` |
 
 ## Provider Support
 
@@ -137,7 +137,7 @@ npm test
 **Python client:**
 
 ```bash
-pip install -e '.[tests]'
+uv pip install -e '.[tests]'
 pytest
 ```
 

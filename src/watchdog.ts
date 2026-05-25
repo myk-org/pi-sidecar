@@ -1,3 +1,5 @@
+import { logger } from "./logger.js";
+
 export interface WatchdogOptions {
   /** Health check interval in ms (default: 30000 = 30s) */
   intervalMs?: number;
@@ -37,7 +39,7 @@ export function startWatchdog(
   const maxFailures = Math.max(options?.maxFailures ?? DEFAULT_MAX_FAILURES, 1);
   const startDelayMs = Math.max(options?.startDelayMs ?? DEFAULT_START_DELAY_MS, 0);
 
-  console.info(`[watchdog] Starting watchdog for ${sanitizeUrl(healthUrl)} (grace=${startDelayMs}ms)`);
+  logger.info(`[watchdog] Starting watchdog for ${sanitizeUrl(healthUrl)} (grace=${startDelayMs}ms)`);
 
   let consecutiveFailures = 0;
   let stopped = false;
@@ -48,7 +50,7 @@ export function startWatchdog(
   let intervalId: ReturnType<typeof setInterval> | undefined;
 
   function startPolling(): void {
-    console.debug(`[watchdog] Grace period ended, starting health checks (interval=${intervalMs}ms, timeout=${timeoutMs}ms, maxFailures=${maxFailures})`);
+    logger.debug(`[watchdog] Grace period ended, starting health checks (interval=${intervalMs}ms, timeout=${timeoutMs}ms, maxFailures=${maxFailures})`);
     intervalId = setInterval(async () => {
       if (stopped || checking) return;
       checking = true;
@@ -59,19 +61,19 @@ export function startWatchdog(
         const resp = await fetch(healthUrl, { signal: currentController.signal });
         if (stopped) return;
         if (resp.ok) {
-          console.debug(`[watchdog] Health check OK: url=${sanitizeUrl(healthUrl)}`);
+          logger.debug(`[watchdog] Health check OK: url=${sanitizeUrl(healthUrl)}`);
           if (consecutiveFailures > 0) {
-            console.log(`[watchdog] Health check recovered after ${consecutiveFailures} failure(s)`);
+            logger.log(`[watchdog] Health check recovered after ${consecutiveFailures} failure(s)`);
           }
           consecutiveFailures = 0;
         } else {
           consecutiveFailures++;
-          console.warn(`[watchdog] Health check returned status ${resp.status} (failure ${consecutiveFailures}/${maxFailures})`);
+          logger.warn(`[watchdog] Health check returned status ${resp.status} (failure ${consecutiveFailures}/${maxFailures})`);
         }
       } catch (err) {
         if (stopped) return;
         consecutiveFailures++;
-        console.warn(`[watchdog] Health check failed (failure ${consecutiveFailures}/${maxFailures}):`, err);
+        logger.warn(`[watchdog] Health check failed (failure ${consecutiveFailures}/${maxFailures}):`, err);
       } finally {
         if (currentTimeout) clearTimeout(currentTimeout);
         currentTimeout = undefined;
@@ -80,10 +82,11 @@ export function startWatchdog(
 
       if (consecutiveFailures >= maxFailures && !dead) {
         dead = true;
+        logger.error(`[watchdog] Max failures reached: failures=${consecutiveFailures}, threshold=${maxFailures}, triggering shutdown`);
         try {
           onDead();
         } catch (err) {
-          console.error("[watchdog] onDead callback threw:", err);
+          logger.error("[watchdog] onDead callback threw:", err);
         }
       }
       checking = false;
@@ -103,6 +106,6 @@ export function startWatchdog(
     currentController?.abort();
     currentTimeout = undefined;
     currentController = undefined;
-    console.info("[watchdog] Watchdog stopped");
+    logger.info("[watchdog] Watchdog stopped");
   };
 }

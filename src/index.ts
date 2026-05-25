@@ -4,6 +4,7 @@ export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { SessionStore } from "./sessions.js";
 import { startWatchdog, type WatchdogOptions } from "./watchdog.js";
+import { logger } from "./logger.js";
 
 const MAX_BODY_SIZE = 1_048_576;
 
@@ -19,6 +20,7 @@ export async function parseBody(req: IncomingMessage): Promise<any> {
       if (bodySizeBytes > MAX_BODY_SIZE) {
         rejected = true;
         req.resume();
+        logger.warn(`[sidecar] Request body too large: size=${bodySizeBytes}, max=${MAX_BODY_SIZE}`);
         reject(new Error("Payload too large"));
         return;
       }
@@ -28,6 +30,7 @@ export async function parseBody(req: IncomingMessage): Promise<any> {
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch (e) {
+        logger.warn(`[sidecar] Invalid JSON body: size=${body.length}`);
         reject(new Error("Invalid JSON body"));
       }
     });
@@ -74,10 +77,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // GET /health
       if (method === "GET" && url === "/health") {
         if (!store.ready) {
+          logger.debug(`[sidecar] GET /health 503: status=starting`);
           sendJson(res, 503, { status: "starting", message: "Model discovery in progress" });
           return;
         }
         if (store.discoveryError) {
+          logger.debug(`[sidecar] GET /health 200: status=degraded, sessions=${store.count()}`);
           sendJson(res, 200, {
             status: "degraded",
             message: "Model discovery failed",
@@ -85,6 +90,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           });
           return;
         }
+        logger.debug(`[sidecar] GET /health 200: status=ok, sessions=${store.count()}`);
         sendJson(res, 200, { status: "ok", sessions: store.count() });
         return;
       }
@@ -92,7 +98,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // GET /models
       if (method === "GET" && url === "/models") {
         const models = store.getModels();
-        console.debug(`[sidecar] Models: count=${models.length}`);
+        logger.debug(`[sidecar] GET /models 200 ${Date.now() - requestStart}ms: count=${models.length}`);
         sendJson(res, 200, { models });
         return;
       }
@@ -100,7 +106,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /models/refresh
       if (method === "POST" && url === "/models/refresh") {
         const models = await store.refreshModels();
-        console.info(`[sidecar] POST /models/refresh 200 ${Date.now() - requestStart}ms models=${models.length}`);
+        logger.info(`[sidecar] POST /models/refresh 200 ${Date.now() - requestStart}ms models=${models.length}`);
         sendJson(res, 200, { models });
         return;
       }
@@ -110,12 +116,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         const body = await parseBody(req);
         const { provider, model, system_prompt, cwd, custom_tools } = body;
         if (!provider || !system_prompt) {
-          console.warn(`[sidecar] POST /sessions 400: provider and system_prompt are required`);
+          logger.warn(`[sidecar] POST /sessions 400: provider and system_prompt are required`);
           sendJson(res, 400, { error: "provider and system_prompt are required" });
           return;
         }
         if (!model) {
-          console.warn(`[sidecar] POST /sessions 400: model is required`);
+          logger.warn(`[sidecar] POST /sessions 400: model is required`);
           sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
           return;
         }
@@ -126,7 +132,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           cwd: cwd || process.cwd(),
           customTools: custom_tools,
         });
-        console.log(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId} provider=${provider} model=${model}`);
+        logger.info(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId} provider=${provider} model=${model}`);
         sendJson(res, 201, { session_id: sessionId });
         return;
       }
@@ -136,13 +142,13 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       if (method === "POST" && params) {
         const body = await parseBody(req);
         if (!body.message) {
-          console.warn(`[sidecar] POST /sessions/${params.id}/prompt 400: message is required`);
+          logger.warn(`[sidecar] POST /sessions/${params.id}/prompt 400: message is required`);
           sendJson(res, 400, { error: "message is required" });
           return;
         }
-        console.log(`[sidecar] POST /sessions/${params.id}/prompt message_length=${body.message.length}`);
+        logger.debug(`[sidecar] POST /sessions/${params.id}/prompt: message_length=${body.message.length}`);
         const result = await store.prompt(params.id, body.message);
-        console.log(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${result.error}` : ""}`);
+        logger.info(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${result.error}` : ""}`);
         sendJson(res, 200, result);
         return;
       }
@@ -150,8 +156,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions/:id/abort
       params = routeMatch(url, "/sessions/:id/abort");
       if (method === "POST" && params) {
+        logger.debug(`[sidecar] POST /sessions/${params.id}/abort: processing`);
         await store.abort(params.id);
-        console.info(`[sidecar] POST /sessions/${params.id}/abort 200 ${Date.now() - requestStart}ms`);
+        logger.info(`[sidecar] POST /sessions/${params.id}/abort 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { aborted: true });
         return;
       }
@@ -159,13 +166,14 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // DELETE /sessions/:id
       params = routeMatch(url, "/sessions/:id");
       if (method === "DELETE" && params) {
+        logger.debug(`[sidecar] DELETE /sessions/${params.id}: processing`);
         store.delete(params.id);
-        console.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms`);
+        logger.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { deleted: true });
         return;
       }
 
-      console.debug(`[sidecar] Route not found: ${method} ${url}`);
+      logger.debug(`[sidecar] Route not found: ${method} ${url}`);
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
@@ -177,9 +185,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("not found") ? 404
         : 500;
       if (status === 500) {
-        console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms`, err);
+        logger.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms`, err);
       } else {
-        console.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+        logger.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
       }
       sendJson(res, status, { error: message });
     }
@@ -187,41 +195,46 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
 
   // Stale session cleanup every 10 minutes
   const cleanupInterval = setInterval(() => {
-    console.debug(`[sidecar] Running stale session cleanup`);
-    store.cleanupStale(60 * 60 * 1000); // 1 hour
+    logger.debug(`[sidecar] Running stale session cleanup`);
+    const cleaned = store.cleanupStale(60 * 60 * 1000); // 1 hour
+    logger.debug(`[sidecar] Stale cleanup result: removed=${cleaned}`);
   }, 10 * 60 * 1000);
 
   let stopWatchdog: (() => void) | undefined;
 
   server.listen(PORT, HOST, () => {
-    console.info(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
-    console.info(`[sidecar] Config: host=${HOST}, port=${PORT}, devMode=${process.env.DEV_MODE || 'false'}`);
+    logger.info(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
+    logger.info(`[sidecar] Config: host=${HOST}, port=${PORT}, devMode=${process.env.DEV_MODE || 'false'}, logLevel=${process.env.PI_SIDECAR_LOG_LEVEL || 'info'}`);
     const watchdogUrl = options?.watchdogUrl || process.env.SIDECAR_WATCHDOG_URL;
     if (watchdogUrl) {
+      logger.info(`[sidecar] Watchdog enabled: url=${watchdogUrl}`);
       stopWatchdog = startWatchdog(watchdogUrl, () => {
-        console.log("[sidecar] Backend unresponsive, shutting down");
+        logger.warn("[sidecar] Backend unresponsive, shutting down");
         stopWatchdog?.();
         clearInterval(cleanupInterval);
         store.disposeAll();
         server.close();
       }, options?.watchdogOptions);
+    } else {
+      logger.info("[sidecar] Watchdog disabled (no SIDECAR_WATCHDOG_URL)");
     }
 
     // Auto-discover models from extensions on startup
     store.refreshModels().catch((err) => {
-      console.error("[sidecar] Model discovery failed:", err);
+      logger.error("[sidecar] Model discovery failed:", err);
     });
   });
 
   return {
     close: () => new Promise<void>((resolve, reject) => {
+      logger.info("[sidecar] Shutting down...");
       stopWatchdog?.();
       clearInterval(cleanupInterval);
       store.disposeAll();
       server.close((err) => {
         if (err) reject(err);
         else resolve();
-        console.log("[sidecar] Shut down");
+        logger.info("[sidecar] Shut down");
       });
     }),
   };
