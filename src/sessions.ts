@@ -48,8 +48,9 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
     permissionMode: "deny-all",
   });
 
-  // handle type is inferred from acpx/runtime at runtime; typed as the return of ensureSession
   let handle: Awaited<ReturnType<typeof runtime.ensureSession>> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   try {
     const discovery = (async () => {
       handle = await runtime.ensureSession({
@@ -69,27 +70,32 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
       }));
     })();
 
-    let timer: ReturnType<typeof setTimeout>;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`acpx discovery for ${agent} timed out after ${DISCOVERY_TIMEOUT_MS / 1000}s`)), DISCOVERY_TIMEOUT_MS);
+      timer = setTimeout(() => {
+        timedOut = true;
+        reject(new Error(`acpx discovery for ${agent} timed out after ${DISCOVERY_TIMEOUT_MS / 1000}s`));
+      }, DISCOVERY_TIMEOUT_MS);
     });
 
-    try {
-      return await Promise.race([discovery, timeout]);
-    } finally {
-      clearTimeout(timer!);
-    }
+    const result = await Promise.race([discovery, timeout]);
+    clearTimeout(timer!);
+    return result;
   } catch (err) {
-    console.warn(`[sidecar] acpx model discovery failed for ${agent}:`, err);
+    console.warn(`[sidecar] Discovery failed: agent=${agent}`, err);
     return [];
   } finally {
+    if (timer) clearTimeout(timer);
+    // Wait briefly for handle assignment if timed out — ensureSession may still be completing
+    if (timedOut && !handle) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
     if (handle) {
       await runtime.close({ handle, reason: "discovery complete" }).catch((err: any) => {
-        console.debug("[sidecar] failed to close discovery session:", err);
+        console.debug(`[sidecar] Discovery close failed: agent=${agent}`, err);
       });
     }
     await rm(stateDir, { recursive: true, force: true }).catch((err: any) => {
-      console.debug("[sidecar] failed to clean up discovery state dir:", err);
+      console.debug(`[sidecar] Discovery cleanup failed: agent=${agent}, stateDir=${stateDir}`, err);
     });
   }
 }
@@ -159,7 +165,7 @@ export class SessionStore {
     // Deduplicate: acpx models take priority over builtin placeholders.
     // Compare by stripping bracket suffixes (e.g. "cursor:default[]" base is "cursor:default").
     const acpxBaseIds = new Set(this.acpxModels.map((m) => baseModelId(m.id)));
-    const dedupedBuiltins = builtinModels.filter((m) => !acpxBaseIds.has(m.id));
+    const dedupedBuiltins = builtinModels.filter((m) => !acpxBaseIds.has(baseModelId(m.id)));
 
     return [...dedupedBuiltins, ...this.acpxModels];
   }
