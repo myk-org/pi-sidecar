@@ -117,37 +117,37 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         const body = await parseBody(req);
         const { provider, model, system_prompt, cwd, custom_tools, tools } = body;
         if (!provider || !system_prompt) {
-          logger.warn(`[sidecar] POST /sessions 400: provider and system_prompt are required`);
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=provider|system_prompt, reason=required`);
           sendJson(res, 400, { error: "provider and system_prompt are required" });
           return;
         }
         if (!model) {
-          logger.warn(`[sidecar] POST /sessions 400: model is required`);
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=model, reason=required`);
           sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
           return;
         }
         if (tools !== undefined) {
           if (!Array.isArray(tools) || !tools.every((t: any) => typeof t === "string")) {
-            logger.warn(`[sidecar] POST /sessions 400: tools must be an array of strings`);
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=tools, reason=must be array of strings`);
             sendJson(res, 400, { error: "tools must be an array of strings" });
             return;
           }
         }
         if (custom_tools !== undefined) {
           if (!Array.isArray(custom_tools)) {
-            logger.warn(`[sidecar] POST /sessions 400: custom_tools must be an array`);
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=custom_tools, reason=must be array`);
             sendJson(res, 400, { error: "custom_tools must be an array" });
             return;
           }
-          if (!custom_tools.every((t: any) => t != null && typeof t === "object")) {
-            logger.warn(`[sidecar] POST /sessions 400: custom_tools entries must be non-null objects`);
-            sendJson(res, 400, { error: "custom_tools entries must be non-null objects" });
+          if (!custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0)) {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=custom_tools, reason=entries must be plain objects with string name`);
+            sendJson(res, 400, { error: "custom_tools entries must be plain objects with a string 'name' property" });
             return;
           }
         }
         const sessionId = await store.create({
           provider,
-          model: model || "",
+          model,
           systemPrompt: system_prompt,
           cwd: cwd || process.cwd(),
           tools,

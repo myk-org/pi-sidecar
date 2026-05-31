@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { DEFAULT_TOOLS } from "../../src/sessions.js";
-import { parseBody, routeMatch } from "../../src/index.js";
+import { parseBody } from "../../src/index.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig, type HttpToolConfig } from "../../src/http-tool-executor.js";
 
 // ---------------------------------------------------------------------------
@@ -103,8 +103,50 @@ describe("POST /sessions input validation", () => {
     const stream = createMockRequest(body);
     const parsed = await parseBody(stream as unknown as IncomingMessage);
     const hasNulls = Array.isArray(parsed.custom_tools) &&
-      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object");
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
     assert.equal(hasNulls, true);
+  });
+
+  it("rejects custom_tools with array entries", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      custom_tools: [{ name: "valid_tool" }, []],
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const hasArrays = Array.isArray(parsed.custom_tools) &&
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
+    assert.equal(hasArrays, true);
+  });
+
+  it("rejects custom_tools entries without a string name", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      custom_tools: [{ description: "no name field" }],
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const missingName = Array.isArray(parsed.custom_tools) &&
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
+    assert.equal(missingName, true);
+  });
+
+  it("rejects custom_tools entries with empty string name", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      custom_tools: [{ name: "", description: "empty name" }],
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const hasEmptyName = Array.isArray(parsed.custom_tools) &&
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
+    assert.equal(hasEmptyName, true);
   });
 
   it("accepts valid custom_tools array", async () => {
@@ -117,7 +159,7 @@ describe("POST /sessions input validation", () => {
     const stream = createMockRequest(body);
     const parsed = await parseBody(stream as unknown as IncomingMessage);
     const isValid = parsed.custom_tools === undefined ||
-      (Array.isArray(parsed.custom_tools) && parsed.custom_tools.every((t: any) => t != null && typeof t === "object"));
+      (Array.isArray(parsed.custom_tools) && parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0));
     assert.equal(isValid, true);
   });
 

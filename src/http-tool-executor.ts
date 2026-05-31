@@ -193,11 +193,11 @@ export function createHttpToolExecutor(httpConfig: HttpToolConfig): (params: Rec
       try {
         const parsed = new URL(url);
         if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-          logger.error(`[sidecar] HTTP tool blocked: unsupported scheme=${parsed.protocol}`);
+          logger.error(`[sidecar] HTTP_TOOL_BLOCKED: reason=unsupported_scheme, scheme=${parsed.protocol}`);
           return `HTTP request failed: Unsupported URL scheme '${parsed.protocol}' — only http: and https: are allowed`;
         }
       } catch {
-        logger.error(`[sidecar] HTTP tool blocked: invalid URL`);
+        logger.error(`[sidecar] HTTP_TOOL_BLOCKED: reason=invalid_url, url_template=${httpConfig.url}`);
         return "HTTP request failed: Invalid URL";
       }
 
