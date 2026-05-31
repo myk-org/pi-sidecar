@@ -15,7 +15,9 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { getModel } from "@earendil-works/pi-ai";
+
 import { logger } from "./logger.js";
+import { createHttpToolExecutor, normalizeHttpToolConfig } from "./http-tool-executor.js";
 const require = createRequire(import.meta.url);
 
 /** Strip bracket suffixes from model IDs for display or comparison (e.g. "cursor:default[]" → "cursor:default"). */
@@ -118,10 +120,25 @@ function resolveExtensionPath(envVar: string, packageName: string, entryFile: st
 const ACPX_EXTENSION = resolveExtensionPath("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
 const VERTEX_EXTENSION = resolveExtensionPath("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
 
+export const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
+
 interface SessionEntry {
   session: AgentSession;
   lastActivity: number;
   inFlight: boolean;
+}
+
+/** Wire-format shape for custom tool configs received via the HTTP API. */
+export interface CustomToolConfig {
+  name: string;
+  description?: string;
+  parameters?: Record<string, any>;
+  /** When present, the tool's execute function is backed by an HTTP request. */
+  http?: Record<string, any>;
+  /** Pre-built execute function (for programmatic callers, not wire format). */
+  execute?: (params: Record<string, any>) => Promise<string>;
+  /** Additional properties passed through to the Pi SDK ToolDefinition. */
+  [key: string]: any;
 }
 
 export interface CreateSessionOptions {
@@ -129,7 +146,8 @@ export interface CreateSessionOptions {
   model: string;
   systemPrompt: string;
   cwd: string;
-  customTools?: any[];
+  tools?: string[];
+  customTools?: CustomToolConfig[];
 }
 
 export class SessionStore {
@@ -286,8 +304,44 @@ export class SessionStore {
     }
     logger.log(`[sidecar] Loading ${extensionPaths.length} extensions`);
 
-    // Build custom tools from config
-    const customTools = options.customTools || [];
+    // Build custom tools from config — result is cast to any[] for Pi SDK ToolDefinition compatibility
+    const customTools: any[] = (options.customTools || []).map((tool) => {
+      if (!tool.name || typeof tool.name !== "string") {
+        logger.error(`[sidecar] Custom tool missing required 'name' field, skipping`);
+        return null;
+      }
+      if (tool.http) {
+        const httpConfig = normalizeHttpToolConfig(tool.http);
+        const httpExecutor = createHttpToolExecutor(httpConfig);
+        logger.debug(`[sidecar] Creating HTTP executor for custom tool: name=${tool.name}, method=${httpConfig.method}, url=${httpConfig.url}`);
+        const { http: _http, execute: _exec, ...rest } = tool;
+        return {
+          ...rest,
+          label: tool.name,
+          description: tool.description || "",
+          parameters: tool.parameters || {},
+          execute: async (
+            _toolCallId: string,
+            params: Record<string, any>,
+            signal: AbortSignal | undefined,
+          ) => {
+            const text = await httpExecutor(params, signal);
+            return {
+              content: [{ type: "text" as const, text }],
+              details: {},
+            };
+          },
+        };
+      }
+      return tool;
+    }).filter((t): t is NonNullable<typeof t> => t != null);
+
+    const tools = options.tools ?? [...DEFAULT_TOOLS];
+    // Include custom tool names in the allowed tools list so the SDK
+    // doesn't filter them out via allowedToolNames.
+    const customToolNames = customTools.map((t: any) => t.name as string);
+    const allToolNames = [...tools, ...customToolNames];
+    logger.debug(`[sidecar] Tools configured: builtin=${JSON.stringify(tools)}, custom=${customTools.length} (${customToolNames.join(",")}), allAllowed=${JSON.stringify(allToolNames)}`);
 
     const settingsManager = SettingsManager.inMemory({
       compaction: { enabled: false },
@@ -307,7 +361,7 @@ export class SessionStore {
       cwd: options.cwd,
       model,
       thinkingLevel: "off",
-      tools: ["read", "grep", "find", "ls", "bash"],
+      tools: allToolNames as string[],
       customTools,
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(),
@@ -317,7 +371,7 @@ export class SessionStore {
     });
 
     this.sessions.set(id, { session, lastActivity: Date.now(), inFlight: false });
-    logger.log(`[sidecar] Session created: ${id} (provider=${options.provider}, model=${options.model}, cwd=${options.cwd}, tools=${options.customTools?.length ?? 0} custom)`);
+    logger.log(`[sidecar] Session created: ${id} (provider=${options.provider}, model=${options.model}, cwd=${options.cwd}, tools=${tools.join(",")}, customTools=${customTools.length})`);
     return id;
   }
 

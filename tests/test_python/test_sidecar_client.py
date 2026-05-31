@@ -135,6 +135,41 @@ class TestSidecarClient:
         assert body["provider"] == "acpx-cursor"
         assert body["model"] == "cursor:gpt-4o"
 
+    # -- create_session with tools --
+    async def test_client_create_session_with_tools(self, client: SidecarClient, tmp_path):
+        mock_resp = _mock_response(200, {"session_id": "sess-tools"})
+        client._client.post = AsyncMock(return_value=mock_resp)
+
+        sid = await client.create_session(
+            provider="gemini",
+            model="gemini-2.5-pro",
+            system_prompt="Be helpful",
+            cwd=str(tmp_path),
+            tools=["read", "bash"],
+        )
+        assert sid == "sess-tools"
+
+        call_kwargs = client._client.post.call_args
+        body = call_kwargs.kwargs["json"]
+        assert body["tools"] == ["read", "bash"]
+
+    # -- create_session without tools omits key --
+    async def test_client_create_session_without_tools(self, client: SidecarClient, tmp_path):
+        mock_resp = _mock_response(200, {"session_id": "sess-no-tools"})
+        client._client.post = AsyncMock(return_value=mock_resp)
+
+        sid = await client.create_session(
+            provider="gemini",
+            model="gemini-2.5-pro",
+            system_prompt="Be helpful",
+            cwd=str(tmp_path),
+        )
+        assert sid == "sess-no-tools"
+
+        call_kwargs = client._client.post.call_args
+        body = call_kwargs.kwargs["json"]
+        assert "tools" not in body
+
     # -- prompt success --
     async def test_client_prompt_success(self, client: SidecarClient):
         mock_resp = _mock_response(
@@ -253,6 +288,32 @@ class TestConvenienceFunctions:
         assert result.success is True
         assert result.session_id == "sess-new"
 
+    # -- call_ai passes tools --
+    async def test_call_ai_passes_tools(self, mock_client: AsyncMock):
+        mock_client.create_session.return_value = "sess-tools"
+        mock_client.prompt.return_value = AIResult(success=True, text="ok")
+
+        result = await call_ai(
+            "hello",
+            ai_provider="gemini",
+            ai_model="gemini-2.5-pro",
+            tools=["read", "grep"],
+        )
+
+        call_kwargs = mock_client.create_session.call_args
+        assert call_kwargs.kwargs["tools"] == ["read", "grep"]
+        assert result.success is True
+
+    # -- call_ai without tools passes None --
+    async def test_call_ai_without_tools(self, mock_client: AsyncMock):
+        mock_client.create_session.return_value = "sess-no-tools"
+        mock_client.prompt.return_value = AIResult(success=True, text="ok")
+
+        await call_ai("hello", ai_provider="gemini", ai_model="gemini-2.5-pro")
+
+        call_kwargs = mock_client.create_session.call_args
+        assert call_kwargs.kwargs["tools"] is None
+
     # -- call_ai reuses session --
     async def test_call_ai_reuses_session(self, mock_client: AsyncMock):
         mock_client.prompt.return_value = AIResult(success=True, text="ok")
@@ -285,6 +346,22 @@ class TestConvenienceFunctions:
         assert result.success is True
         assert result.session_id is None  # cleared after cleanup
         mock_client.delete_session.assert_awaited_once_with("sess-once")
+
+    # -- call_ai_once passes tools --
+    async def test_call_ai_once_passes_tools(self, mock_client: AsyncMock):
+        mock_client.create_session.return_value = "sess-once-tools"
+        mock_client.prompt.return_value = AIResult(success=True, text="done")
+
+        result = await call_ai_once(
+            "hello",
+            ai_provider="gemini",
+            ai_model="gemini-2.5-pro",
+            tools=["bash"],
+        )
+
+        assert result.success is True
+        call_kwargs = mock_client.create_session.call_args
+        assert call_kwargs.kwargs["tools"] == ["bash"]
 
     # -- call_ai surfaces sidecar error --
     async def test_call_ai_surfaces_sidecar_error(self, mock_client: AsyncMock) -> None:

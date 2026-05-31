@@ -1,5 +1,6 @@
-export { SessionStore, type CreateSessionOptions } from "./sessions.js";
+export { SessionStore, type CreateSessionOptions, type CustomToolConfig, DEFAULT_TOOLS } from "./sessions.js";
 export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
+export { createHttpToolExecutor, normalizeHttpToolConfig, interpolate, type HttpToolConfig } from "./http-tool-executor.js";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { SessionStore } from "./sessions.js";
@@ -114,7 +115,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions
       if (method === "POST" && url === "/sessions") {
         const body = await parseBody(req);
-        const { provider, model, system_prompt, cwd, custom_tools } = body;
+        const { provider, model, system_prompt, cwd, custom_tools, tools } = body;
         if (!provider || !system_prompt) {
           logger.warn(`[sidecar] POST /sessions 400: provider and system_prompt are required`);
           sendJson(res, 400, { error: "provider and system_prompt are required" });
@@ -125,11 +126,19 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
           return;
         }
+        if (tools !== undefined) {
+          if (!Array.isArray(tools) || !tools.every((t: any) => typeof t === "string")) {
+            logger.warn(`[sidecar] POST /sessions 400: tools must be an array of strings`);
+            sendJson(res, 400, { error: "tools must be an array of strings" });
+            return;
+          }
+        }
         const sessionId = await store.create({
           provider,
           model: model || "",
           systemPrompt: system_prompt,
           cwd: cwd || process.cwd(),
+          tools,
           customTools: custom_tools,
         });
         logger.info(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId} provider=${provider} model=${model}`);

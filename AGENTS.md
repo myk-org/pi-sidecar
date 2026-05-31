@@ -23,12 +23,15 @@ pi-sidecar/                        (repo root = npm package root)
 │   ├── server.ts                   # CLI entry point — imports and calls startSidecar()
 │   ├── index.ts                    # HTTP server, routing, JSON helpers, startSidecar()
 │   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery, error surfacing
+│   ├── http-tool-executor.ts       # HTTP-backed custom tool executor with parameter interpolation
 │   └── watchdog.ts                 # Health-check poller; kills sidecar when backend is unresponsive
 ├── tests/
 │   ├── test_ts/                    # TypeScript sidecar tests
 │   │   ├── parse-body.test.ts     # Body parser tests
 │   │   ├── route-match.test.ts    # URL route matching tests
-│   │   └── watchdog.test.ts       # Health check watchdog tests
+│   │   ├── watchdog.test.ts       # Health check watchdog tests
+│   │   ├── http-tool-executor.test.ts # HTTP tool executor tests (interpolation, security, timeout)
+│   │   └── tools-config.test.ts   # DEFAULT_TOOLS constant and tools config tests
 │   └── test_python/                # Python client tests
 │       ├── conftest.py            # Shared test fixtures
 │       └── test_sidecar_client.py # Client unit tests
@@ -164,7 +167,9 @@ The sidecar code was lifted from an existing monorepo. When porting code, **copy
 
 ### 2. Tools are pluggable via `customTools`, not hardcoded
 
-Sessions accept an optional `custom_tools` array at creation time. The default tool set (`read`, `grep`, `find`, `ls`, `bash`) is intentionally minimal. Callers extend it per-session — never add domain-specific tools to the sidecar itself.
+Sessions accept an optional `custom_tools` array at creation time. The default builtin tool set is defined by `DEFAULT_TOOLS` (`read`, `grep`, `find`, `ls`, `bash`). Callers can override the builtin tools by passing a `tools` array in `POST /sessions`, or extend with custom tools via `custom_tools`. Never add domain-specific tools to the sidecar itself.
+
+Custom tools with an `http` property are automatically wrapped with the HTTP tool executor (`src/http-tool-executor.ts`), which interpolates `{paramName}` placeholders in URLs, headers, query params, and body templates. The executor includes security hardening: URI-encoding in URL paths (SSRF prevention), CRLF stripping in headers, JSON-escaping in object body templates, request timeouts (30s default), and response size limits (1MB).
 
 ### 3. Watchdog is opt-in
 
