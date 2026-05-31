@@ -514,13 +514,12 @@ export class SessionStore {
 
   delete(id: string): void {
     const entry = this.sessions.get(id);
-    if (entry) {
-      entry.session.dispose();
-      this.sessions.delete(id);
-      logger.log(`[sidecar] Session deleted: ${id}`);
-    } else {
-      logger.debug(`[sidecar] Session delete skipped (not found): ${id}`);
+    if (!entry) {
+      throw new Error(`Session ${id} not found`);
     }
+    entry.session.dispose();
+    this.sessions.delete(id);
+    logger.log(`[sidecar] Session deleted: ${id}`);
   }
 
   disposeAll(): void {
