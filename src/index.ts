@@ -1,5 +1,6 @@
-export { SessionStore, type CreateSessionOptions } from "./sessions.js";
+export { SessionStore, type CreateSessionOptions, type CustomToolConfig, DEFAULT_TOOLS } from "./sessions.js";
 export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
+export { createHttpToolExecutor, normalizeHttpToolConfig, interpolate, type HttpToolConfig } from "./http-tool-executor.js";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { SessionStore } from "./sessions.js";
@@ -114,22 +115,47 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions
       if (method === "POST" && url === "/sessions") {
         const body = await parseBody(req);
-        const { provider, model, system_prompt, cwd, custom_tools } = body;
-        if (!provider || !system_prompt) {
-          logger.warn(`[sidecar] POST /sessions 400: provider and system_prompt are required`);
-          sendJson(res, 400, { error: "provider and system_prompt are required" });
+        const { provider, model, system_prompt, cwd, custom_tools, tools } = body;
+        if (typeof provider !== "string" || provider.length === 0 || typeof system_prompt !== "string" || system_prompt.length === 0) {
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=provider|system_prompt, reason=must be non-empty strings`);
+          sendJson(res, 400, { error: "provider and system_prompt are required and must be non-empty strings" });
           return;
         }
-        if (!model) {
-          logger.warn(`[sidecar] POST /sessions 400: model is required`);
-          sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
+        if (typeof model !== "string" || model.length === 0) {
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=model, reason=must be non-empty string`);
+          sendJson(res, 400, { error: "model is required and must be a non-empty string. Use GET /models to list available models." });
           return;
+        }
+        if (cwd !== undefined && typeof cwd !== "string") {
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=cwd, reason=must be string`);
+          sendJson(res, 400, { error: "cwd must be a string" });
+          return;
+        }
+        if (tools !== undefined) {
+          if (!Array.isArray(tools) || !tools.every((t: any) => typeof t === "string")) {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=tools, reason=must be array of strings`);
+            sendJson(res, 400, { error: "tools must be an array of strings" });
+            return;
+          }
+        }
+        if (custom_tools !== undefined) {
+          if (!Array.isArray(custom_tools)) {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=custom_tools, reason=must be array`);
+            sendJson(res, 400, { error: "custom_tools must be an array" });
+            return;
+          }
+          if (!custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0)) {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=custom_tools, reason=entries must be plain objects with string name`);
+            sendJson(res, 400, { error: "custom_tools entries must be plain objects with a string 'name' property" });
+            return;
+          }
         }
         const sessionId = await store.create({
           provider,
-          model: model || "",
+          model,
           systemPrompt: system_prompt,
           cwd: cwd || process.cwd(),
+          tools,
           customTools: custom_tools,
         });
         logger.info(`[sidecar] POST /sessions 201 ${Date.now() - requestStart}ms session=${sessionId} provider=${provider} model=${model}`);
@@ -166,10 +192,10 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // DELETE /sessions/:id
       params = routeMatch(url, "/sessions/:id");
       if (method === "DELETE" && params) {
-        logger.debug(`[sidecar] DELETE /sessions/${params.id}: processing`);
-        store.delete(params.id);
-        logger.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms`);
-        sendJson(res, 200, { deleted: true });
+        logger.debug(`[sidecar] DELETE /sessions/${params.id}: action=delete`);
+        const existed = store.delete(params.id);
+        logger.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms: existed=${existed}`);
+        sendJson(res, 200, { deleted: true, existed });
         return;
       }
 

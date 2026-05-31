@@ -159,17 +159,19 @@ class SidecarClient:
         system_prompt: str,
         cwd: str = DEFAULT_CWD,
         custom_tools: list | None = None,
+        tools: list[str] | None = None,
     ) -> str:
         """Create a new AI session. Returns session_id."""
         sidecar_provider, sidecar_model = _map_provider_model(provider, model)
         logger.debug(
-            "Creating session: provider=%s→%s, model=%s→%s, cwd=%s, custom_tools=%d",
+            "Creating session: provider=%s→%s, model=%s→%s, cwd=%s, custom_tools=%d, tools=%s",
             provider,
             sidecar_provider,
             model,
             sidecar_model,
             cwd,
             len(custom_tools or []),
+            tools,
         )
         body: dict[str, Any] = {
             "provider": sidecar_provider,
@@ -179,6 +181,8 @@ class SidecarClient:
         }
         if custom_tools:
             body["custom_tools"] = custom_tools
+        if tools is not None:
+            body["tools"] = tools
         resp = await self._client.post("/sessions", json=body)
         resp.raise_for_status()
         session_id = resp.json()["session_id"]
@@ -293,6 +297,7 @@ async def call_ai(
     ai_call_timeout: int | None = None,
     session_id: str | None = None,
     custom_tools: list | None = None,
+    tools: list[str] | None = None,
 ) -> AIResult:
     """Call AI via the sidecar.
 
@@ -307,11 +312,12 @@ async def call_ai(
       previous result to continue the conversation.
     """
     logger.debug(
-        "call_ai: provider=%s, model=%s, session_id=%s, prompt_length=%d",
+        "call_ai: provider=%s, model=%s, session_id=%s, prompt_length=%d, tools=%s",
         ai_provider,
         ai_model,
         session_id or "new",
         len(prompt),
+        tools,
     )
     client = get_sidecar_client()
     created_session = False
@@ -323,6 +329,7 @@ async def call_ai(
                 system_prompt=system_prompt or "You are a helpful assistant.",
                 cwd=cwd or DEFAULT_CWD,
                 custom_tools=custom_tools,
+                tools=tools,
             )
             created_session = True
         else:
@@ -363,6 +370,7 @@ async def call_ai_once(
     system_prompt: str = "",
     ai_call_timeout: int | None = None,
     custom_tools: list | None = None,
+    tools: list[str] | None = None,
 ) -> AIResult:
     """Single-shot AI call with automatic session cleanup.
 
@@ -371,7 +379,9 @@ async def call_ai_once(
     preserved so the caller can retry cleanup.
     Use ``call_ai`` directly for multi-turn conversations.
     """
-    logger.debug("call_ai_once: provider=%s, model=%s, prompt_length=%d", ai_provider, ai_model, len(prompt))
+    logger.debug(
+        "call_ai_once: provider=%s, model=%s, prompt_length=%d, tools=%s", ai_provider, ai_model, len(prompt), tools
+    )
     result = await call_ai(
         prompt,
         ai_provider=ai_provider,
@@ -380,6 +390,7 @@ async def call_ai_once(
         system_prompt=system_prompt,
         ai_call_timeout=ai_call_timeout,
         custom_tools=custom_tools,
+        tools=tools,
     )
     # Always clean up — this is a single-shot call
     if result.session_id:

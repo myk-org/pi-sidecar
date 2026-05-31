@@ -29,10 +29,37 @@ All endpoints accept/return JSON. Default base URL: `http://127.0.0.1:9100`.
 | `GET` | `/health` | Returns `{"status":"ok","sessions":N}`. 503 while model discovery is in progress. |
 | `GET` | `/models` | List all discovered models. |
 | `POST` | `/models/refresh` | Re-run model discovery and return updated list. |
-| `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, custom_tools?}` → `{session_id}` |
+| `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, tools?, custom_tools?}` → `{session_id}` |
 | `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage, error?}` |
 | `POST` | `/sessions/:id/abort` | Abort an in-progress prompt. |
 | `DELETE` | `/sessions/:id` | Delete a session and free resources. |
+
+> **`POST /sessions` — `tools` parameter:**
+>
+> Optional array of builtin tool names to enable for the session. Defaults to `["read", "grep", "find", "ls", "bash"]`. Pass a subset to restrict available tools (e.g. `["read"]` for read-only sessions).
+
+> **`POST /sessions` — HTTP-backed custom tools:**
+>
+> Custom tools can include an `http` property to delegate execution to an HTTP endpoint. The sidecar interpolates `{paramName}` placeholders in the URL, headers, query params, and body template with the tool's runtime parameters.
+>
+> ```json
+> {
+>   "custom_tools": [{
+>     "name": "lookup_user",
+>     "description": "Look up a user by ID",
+>     "parameters": { "type": "object", "properties": { "userId": { "type": "string" } } },
+>     "http": {
+>       "method": "GET",
+>       "url": "https://api.example.com/users/{userId}",
+>       "headers": { "Authorization": "Bearer {token}" },
+>       "query_params": { "fields": "name,email" },
+>       "timeoutMs": 10000
+>     }
+>   }]
+> }
+> ```
+>
+> Security: URL path parameters are URI-encoded, header values are stripped of CR/LF, object body template values are JSON-escaped, requests have a 30s default timeout, and responses are limited to 1MB.
 
 > **`POST /sessions/:id/prompt` — error field:**
 >
