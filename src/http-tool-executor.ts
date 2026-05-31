@@ -197,7 +197,8 @@ export function createHttpToolExecutor(httpConfig: HttpToolConfig): (params: Rec
           return `HTTP request failed: Unsupported URL scheme '${parsed.protocol}' — only http: and https: are allowed`;
         }
       } catch {
-        logger.error(`[sidecar] HTTP_TOOL_BLOCKED: reason=invalid_url, url_template=${httpConfig.url}`);
+        const safeUrlTemplate = String(httpConfig.url).replace(/[\r\n]/g, "");
+        logger.error(`[sidecar] HTTP_TOOL_BLOCKED: reason=invalid_url, url_template=${safeUrlTemplate}`);
         return "HTTP request failed: Invalid URL";
       }
 

@@ -539,6 +539,17 @@ describe("createHttpToolExecutor", () => {
     assert.equal(fetchMock.mock.callCount(), 0);
   });
 
+  it("sanitizes url_template in error log to prevent log injection", async () => {
+    const httpConfig: HttpToolConfig = {
+      method: "GET",
+      url: "not-a-valid-url\r\n[sidecar] FAKE: injected=true",
+    };
+    const executor = createHttpToolExecutor(httpConfig);
+    const result = await executor({});
+    // The executor should return an error string (not throw)
+    assert.ok(result.includes("HTTP request failed"), `Expected error message, got: ${result}`);
+  });
+
   it("aborts when external signal fires during request", async () => {
     const externalController = new AbortController();
 

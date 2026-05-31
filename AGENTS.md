@@ -169,7 +169,7 @@ The sidecar code was lifted from an existing monorepo. When porting code, **copy
 
 Sessions accept an optional `custom_tools` array at creation time. Each entry must be a plain object (not an array) with a non-empty string `name` property; entries failing this check are rejected with a 400. The default builtin tool set is defined by `DEFAULT_TOOLS` (`read`, `grep`, `find`, `ls`, `bash`). Callers can override the builtin tools by passing a `tools` array in `POST /sessions`, or extend with custom tools via `custom_tools`. Never add domain-specific tools to the sidecar itself.
 
-Custom tools with an `http` property are automatically wrapped with the HTTP tool executor (`src/http-tool-executor.ts`), which interpolates `{paramName}` placeholders in URLs, headers, query params, and body templates. The executor includes security hardening: URI-encoding in URL paths (SSRF prevention), URL scheme validation (http/https only), CRLF stripping in headers, JSON-escaping in object body templates, request timeouts (30s default), and response size limits (1MB).
+Custom tools with an `http` property are automatically wrapped with the HTTP tool executor (`src/http-tool-executor.ts`), which interpolates `{paramName}` placeholders in URLs, headers, query params, and body templates. The executor includes security hardening: URI-encoding in URL paths (path traversal / URL injection mitigation), URL scheme validation (http/https only), CRLF stripping in headers, JSON-escaping in object body templates, request timeouts (30s default), and response size limits (1MB). Note: host allowlisting and private-network blocking are not implemented — callers are responsible for restricting target hosts if needed.
 
 ### 3. Watchdog is opt-in
 

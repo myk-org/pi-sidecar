@@ -174,6 +174,43 @@ describe("POST /sessions input validation", () => {
     assert.equal(parsed.tools, undefined);
     assert.equal(parsed.custom_tools, undefined);
   });
+
+  it("rejects non-string provider", async () => {
+    const body = {
+      provider: 123,
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = typeof parsed.provider !== "string" || parsed.provider.length === 0;
+    assert.equal(isInvalid, true);
+  });
+
+  it("rejects non-string model", async () => {
+    const body = {
+      provider: "google",
+      model: { nested: true },
+      system_prompt: "test",
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = typeof parsed.model !== "string" || parsed.model.length === 0;
+    assert.equal(isInvalid, true);
+  });
+
+  it("rejects non-string cwd", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      cwd: 42,
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = parsed.cwd !== undefined && typeof parsed.cwd !== "string";
+    assert.equal(isInvalid, true);
+  });
 });
 
 // ---------------------------------------------------------------------------

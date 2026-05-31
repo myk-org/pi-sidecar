@@ -116,14 +116,19 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       if (method === "POST" && url === "/sessions") {
         const body = await parseBody(req);
         const { provider, model, system_prompt, cwd, custom_tools, tools } = body;
-        if (!provider || !system_prompt) {
-          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=provider|system_prompt, reason=required`);
-          sendJson(res, 400, { error: "provider and system_prompt are required" });
+        if (typeof provider !== "string" || provider.length === 0 || typeof system_prompt !== "string" || system_prompt.length === 0) {
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=provider|system_prompt, reason=must be non-empty strings`);
+          sendJson(res, 400, { error: "provider and system_prompt are required and must be non-empty strings" });
           return;
         }
-        if (!model) {
-          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=model, reason=required`);
-          sendJson(res, 400, { error: "model is required. Use GET /models to list available models." });
+        if (typeof model !== "string" || model.length === 0) {
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=model, reason=must be non-empty string`);
+          sendJson(res, 400, { error: "model is required and must be a non-empty string. Use GET /models to list available models." });
+          return;
+        }
+        if (cwd !== undefined && typeof cwd !== "string") {
+          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=cwd, reason=must be string`);
+          sendJson(res, 400, { error: "cwd must be a string" });
           return;
         }
         if (tools !== undefined) {
