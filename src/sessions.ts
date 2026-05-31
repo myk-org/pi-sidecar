@@ -128,15 +128,19 @@ interface SessionEntry {
   inFlight: boolean;
 }
 
-/** Wire-format shape for custom tool configs received via the HTTP API. */
+/**
+ * Wire-format shape for custom tool configs received via the HTTP API.
+ * Non-HTTP tools are passed through to the Pi SDK as-is and must already
+ * conform to the SDK's ToolDefinition interface (including the SDK-style
+ * `execute(toolCallId, params, signal, onUpdate, ctx)` signature).
+ * HTTP-backed tools are automatically wrapped with the correct SDK signature.
+ */
 export interface CustomToolConfig {
   name: string;
   description?: string;
   parameters?: Record<string, any>;
   /** When present, the tool's execute function is backed by an HTTP request. */
   http?: Record<string, any>;
-  /** Pre-built execute function (for programmatic callers, not wire format). */
-  execute?: (params: Record<string, any>) => Promise<string>;
   /** Additional properties passed through to the Pi SDK ToolDefinition. */
   [key: string]: any;
 }

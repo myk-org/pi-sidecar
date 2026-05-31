@@ -133,6 +133,18 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             return;
           }
         }
+        if (custom_tools !== undefined) {
+          if (!Array.isArray(custom_tools)) {
+            logger.warn(`[sidecar] POST /sessions 400: custom_tools must be an array`);
+            sendJson(res, 400, { error: "custom_tools must be an array" });
+            return;
+          }
+          if (!custom_tools.every((t: any) => t != null && typeof t === "object")) {
+            logger.warn(`[sidecar] POST /sessions 400: custom_tools entries must be non-null objects`);
+            sendJson(res, 400, { error: "custom_tools entries must be non-null objects" });
+            return;
+          }
+        }
         const sessionId = await store.create({
           provider,
           model: model || "",

@@ -419,6 +419,62 @@ describe("createHttpToolExecutor", () => {
     assert.equal(parsed.path, 'C:\\Users\\test\t"hello"\nnewline');
   });
 
+  // -- Security: URL scheme validation --
+
+  it("blocks non-http/https URL schemes", async () => {
+    mockFetch("should not reach");
+
+    const config: HttpToolConfig = {
+      method: "GET",
+      url: "file:///etc/passwd",
+    };
+    const executor = createHttpToolExecutor(config);
+    const result = await executor({});
+
+    assert.ok(result.includes("Unsupported URL scheme"), `Should block file: scheme: ${result}`);
+    const fetchMock = globalThis.fetch as ReturnType<typeof mock.fn>;
+    assert.equal(fetchMock.mock.callCount(), 0, "fetch should not be called for blocked schemes");
+  });
+
+  it("allows https URLs", async () => {
+    mockFetch("ok");
+
+    const config: HttpToolConfig = {
+      method: "GET",
+      url: "https://api.example.com/data",
+    };
+    const executor = createHttpToolExecutor(config);
+    const result = await executor({});
+
+    assert.equal(result, "ok");
+  });
+
+  it("allows http URLs", async () => {
+    mockFetch("ok");
+
+    const config: HttpToolConfig = {
+      method: "GET",
+      url: "http://internal-api.local/data",
+    };
+    const executor = createHttpToolExecutor(config);
+    const result = await executor({});
+
+    assert.equal(result, "ok");
+  });
+
+  it("returns error for invalid URLs", async () => {
+    mockFetch("should not reach");
+
+    const config: HttpToolConfig = {
+      method: "GET",
+      url: "not-a-url",
+    };
+    const executor = createHttpToolExecutor(config);
+    const result = await executor({});
+
+    assert.ok(result.includes("Invalid URL"), `Should reject invalid URL: ${result}`);
+  });
+
   // -- Timeout --
 
   it("returns timeout error when request exceeds timeoutMs", async () => {

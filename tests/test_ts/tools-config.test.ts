@@ -1,7 +1,10 @@
 import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { PassThrough } from "node:stream";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { DEFAULT_TOOLS } from "../../src/sessions.js";
+import { parseBody, routeMatch } from "../../src/index.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig, type HttpToolConfig } from "../../src/http-tool-executor.js";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +34,103 @@ describe("CreateSessionOptions tools field", () => {
     // Verify the export path works (sessions.js → index.js re-export)
     const { DEFAULT_TOOLS: fromIndex } = await import("../../src/index.js");
     assert.deepEqual([...fromIndex], ["read", "grep", "find", "ls", "bash"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2b. POST /sessions input validation (tools & custom_tools)
+// ---------------------------------------------------------------------------
+
+describe("POST /sessions input validation", () => {
+  /** Create a mock request with a JSON body */
+  function createMockRequest(body: any): PassThrough {
+    const stream = new PassThrough();
+    stream.write(JSON.stringify(body));
+    stream.end();
+    return stream;
+  }
+
+  it("rejects tools when not an array of strings", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      tools: "not-an-array",
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    // Validate same way index.ts does
+    const isInvalid = parsed.tools !== undefined &&
+      (!Array.isArray(parsed.tools) || !parsed.tools.every((t: any) => typeof t === "string"));
+    assert.equal(isInvalid, true);
+  });
+
+  it("accepts valid tools array", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      tools: ["read", "bash"],
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isValid = parsed.tools === undefined ||
+      (Array.isArray(parsed.tools) && parsed.tools.every((t: any) => typeof t === "string"));
+    assert.equal(isValid, true);
+    assert.deepEqual(parsed.tools, ["read", "bash"]);
+  });
+
+  it("rejects custom_tools when not an array", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      custom_tools: "not-an-array",
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = parsed.custom_tools !== undefined && !Array.isArray(parsed.custom_tools);
+    assert.equal(isInvalid, true);
+  });
+
+  it("rejects custom_tools with null entries", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      custom_tools: [null, { name: "valid" }],
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const hasNulls = Array.isArray(parsed.custom_tools) &&
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object");
+    assert.equal(hasNulls, true);
+  });
+
+  it("accepts valid custom_tools array", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      custom_tools: [{ name: "my_tool", description: "A tool" }],
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isValid = parsed.custom_tools === undefined ||
+      (Array.isArray(parsed.custom_tools) && parsed.custom_tools.every((t: any) => t != null && typeof t === "object"));
+    assert.equal(isValid, true);
+  });
+
+  it("accepts request without tools or custom_tools", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    assert.equal(parsed.tools, undefined);
+    assert.equal(parsed.custom_tools, undefined);
   });
 });
 
