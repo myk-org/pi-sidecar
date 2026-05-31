@@ -515,12 +515,12 @@ export class SessionStore {
   delete(id: string): boolean {
     const entry = this.sessions.get(id);
     if (!entry) {
-      logger.debug(`[sidecar] Session delete no-op (not found): ${id}`);
+      logger.debug(`[sidecar] SESSION_DELETE: result=no-op, session=${id}, reason=not_found`);
       return false;
     }
     entry.session.dispose();
     this.sessions.delete(id);
-    logger.log(`[sidecar] Session deleted: ${id}`);
+    logger.log(`[sidecar] SESSION_DELETE: result=disposed, session=${id}`);
     return true;
   }
 

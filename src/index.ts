@@ -192,9 +192,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // DELETE /sessions/:id
       params = routeMatch(url, "/sessions/:id");
       if (method === "DELETE" && params) {
-        logger.debug(`[sidecar] DELETE /sessions/${params.id}: processing`);
+        logger.debug(`[sidecar] DELETE /sessions/${params.id}: action=delete`);
         const existed = store.delete(params.id);
-        logger.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms existed=${existed}`);
+        logger.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms: existed=${existed}`);
         sendJson(res, 200, { deleted: true, existed });
         return;
       }
