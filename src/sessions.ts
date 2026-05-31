@@ -18,6 +18,7 @@ import { getModel } from "@earendil-works/pi-ai";
 
 import { logger } from "./logger.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig } from "./http-tool-executor.js";
+
 const require = createRequire(import.meta.url);
 
 /** Strip bracket suffixes from model IDs for display or comparison (e.g. "cursor:default[]" → "cursor:default"). */
