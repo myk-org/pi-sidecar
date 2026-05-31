@@ -540,14 +540,41 @@ describe("createHttpToolExecutor", () => {
   });
 
   it("sanitizes url_template in error log to prevent log injection", async () => {
-    const httpConfig: HttpToolConfig = {
-      method: "GET",
-      url: "not-a-valid-url\r\n[sidecar] FAKE: injected=true",
+    const loggedMessages: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: any[]) => {
+      loggedMessages.push(args.map(String).join(" "));
     };
-    const executor = createHttpToolExecutor(httpConfig);
-    const result = await executor({});
-    // The executor should return an error string (not throw)
-    assert.ok(result.includes("HTTP request failed"), `Expected error message, got: ${result}`);
+
+    try {
+      const httpConfig: HttpToolConfig = {
+        method: "GET",
+        url: "not-a-valid-url\r\n[sidecar] FAKE: injected=true",
+      };
+      const executor = createHttpToolExecutor(httpConfig);
+      const result = await executor({});
+
+      // The executor should return an error string (not throw)
+      assert.ok(result.includes("HTTP request failed"), `Expected error message, got: ${result}`);
+
+      // Verify the log was emitted
+      const blockLog = loggedMessages.find((m) => m.includes("HTTP_TOOL_BLOCKED") && m.includes("invalid_url"));
+      assert.ok(blockLog, `Expected HTTP_TOOL_BLOCKED log, got: ${JSON.stringify(loggedMessages)}`);
+
+      // Verify CR/LF was stripped from the logged message
+      assert.ok(!blockLog.includes("\r"), "Log should not contain CR");
+      assert.ok(!blockLog.includes("\n"), "Log should not contain LF");
+
+      // Verify the injected fake log line is not present as a separate log line
+      // (CR/LF stripped means the injected text is concatenated, not on its own line)
+      const separateLines = loggedMessages.filter((m) => m.includes("[sidecar] FAKE") && !m.includes("HTTP_TOOL_BLOCKED"));
+      assert.equal(separateLines.length, 0, "Injected content should not appear as a separate log line");
+
+      // Verify sanitized template is still included (without CR/LF)
+      assert.ok(blockLog.includes("url_template="), "Log should include url_template field");
+    } finally {
+      console.error = originalError;
+    }
   });
 
   it("aborts when external signal fires during request", async () => {
