@@ -9,7 +9,7 @@
   },
   "keywords": ["pi", "sidecar", "ai", "coding-agent", "llm"],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19.0"
   },
   "type": "module",
   "main": "dist/index.js",
