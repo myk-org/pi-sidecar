@@ -9,7 +9,7 @@
   },
   "keywords": ["pi", "sidecar", "ai", "coding-agent", "llm"],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.19.0"
   },
   "type": "module",
   "main": "dist/index.js",
@@ -23,8 +23,8 @@
     "test": "node --import tsx --test tests/test_ts/*.test.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@earendil-works/pi-ai": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.79.0",
+    "@earendil-works/pi-ai": "^0.79.0",
     "pi-orchestrator-config": "myk-org/pi-config#v3.1.0",
     "pi-vertex-claude": "myk-org/pi-vertex-claude#v0.2.1"
   },
@@ -32,5 +32,9 @@
     "typescript": "^5.7.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.0.0"
+  },
+  "overrides": {
+    "undici": ">=6.27.0",
+    "uuid": ">=11.1.1"
   }
 }

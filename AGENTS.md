@@ -8,7 +8,7 @@ The repo ships **two packages**:
 
 | Package | Language | Purpose |
 |---------|----------|---------|
-| `@myk-org/pi-sidecar` (repo root) | TypeScript (Node 22+) | HTTP server wrapping the Pi SDK — session lifecycle, model discovery, watchdog |
+| `@myk-org/pi-sidecar` (repo root) | TypeScript (Node ≥22.19) | HTTP server wrapping the Pi SDK — session lifecycle, model discovery, watchdog |
 | `pi_sidecar_client/` | Python 3.10+ | Async client (`httpx`) with convenience helpers (`call_ai`, `call_ai_once`, `list_models`) |
 
 ---
