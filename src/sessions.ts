@@ -405,6 +405,7 @@ export class SessionStore {
     let responseText = "";
     let textDeltaCount = 0;
     let lastAssistantMessage: object | null = null;
+    let messageBoundaries: number[] = [];
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: null as number | null, duration_ms: 0 };
     const startTime = Date.now();
 
@@ -433,7 +434,7 @@ export class SessionStore {
       }
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
-          responseText += "\n\n";
+          messageBoundaries.push(responseText.length);
           logger.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
         }
         lastAssistantMessage = event.message;
@@ -501,6 +502,24 @@ export class SessionStore {
     }
 
     usage.duration_ms = Date.now() - startTime;
+
+    // Insert \n\n at message boundaries for text responses only.
+    // JSON responses must not be modified — the separator would corrupt structured data.
+    if (messageBoundaries.length > 0 && responseText.length > 0) {
+      const trimmed = responseText.trim();
+      const isJson = (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+      if (!isJson) {
+        // Insert \n\n at each boundary offset (reverse order to preserve positions)
+        for (let i = messageBoundaries.length - 1; i >= 0; i--) {
+          const pos = messageBoundaries[i];
+          responseText = responseText.slice(0, pos) + "\n\n" + responseText.slice(pos);
+        }
+        logger.debug(`[sidecar] MSG_BOUNDARIES_APPLIED: session=${id}, count=${messageBoundaries.length}`);
+      } else {
+        logger.debug(`[sidecar] MSG_BOUNDARIES_SKIPPED: session=${id}, count=${messageBoundaries.length}, reason=json_response`);
+      }
+    }
+
     logger.log(`[sidecar] Prompt completed: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration=${usage.duration_ms}ms`);
 
     // If we got errors from the AI, surface them
