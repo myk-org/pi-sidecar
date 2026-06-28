@@ -29,7 +29,7 @@ All endpoints accept/return JSON. Default base URL: `http://127.0.0.1:9100`.
 | `GET` | `/health` | Returns `{"status":"ok","sessions":N}`. 503 while model discovery is in progress. |
 | `GET` | `/models` | List all discovered models. |
 | `POST` | `/models/refresh` | Re-run model discovery and return updated list. |
-| `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, tools?, custom_tools?}` → `{session_id}`. The `cwd` also controls project resource loading (see [Project Resources](#project-resources)). |
+| `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, agent_dir?, tools?, custom_tools?}` → `{session_id}`. See [Project Resources](#project-resources) for `cwd` and `agent_dir`. |
 | `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage, error?}` |
 | `POST` | `/sessions/:id/abort` | Abort an in-progress prompt. |
 | `DELETE` | `/sessions/:id` | Delete a session and free resources. |
@@ -82,6 +82,20 @@ The Pi SDK automatically loads project-level resources from the `cwd` directory 
 ```
 
 This means callers can customize AI behavior per-project without any sidecar code changes — just set `cwd` to a directory containing these files.
+
+### Global Agent Directory (`agent_dir`)
+
+The optional `agent_dir` parameter in `POST /sessions` points to a global agent directory for user-level resources (the `~/.pi/agent/` equivalent):
+
+```text
+{agent_dir}/
+├── skills/                # User-level skills
+├── extensions/            # User-level extensions
+├── auth.json              # Credentials
+└── models.json            # Model configs
+```
+
+When both `cwd` and `agent_dir` are set, the SDK merges resources from both — project-level resources from `{cwd}/.pi/` and global resources from `{agent_dir}/`.
 
 **Example:** Create a project with custom skills and instructions:
 
