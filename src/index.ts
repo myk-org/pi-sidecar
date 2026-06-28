@@ -3,6 +3,8 @@ export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 export { createHttpToolExecutor, normalizeHttpToolConfig, interpolate, type HttpToolConfig } from "./http-tool-executor.js";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { isAbsolute } from "node:path";
+import { statSync } from "node:fs";
 import { SessionStore } from "./sessions.js";
 import { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 import { logger } from "./logger.js";
@@ -131,10 +133,29 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 400, { error: "cwd must be a string" });
           return;
         }
-        if (agent_dir !== undefined && typeof agent_dir !== "string") {
-          logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be string`);
-          sendJson(res, 400, { error: "agent_dir must be a string" });
-          return;
+        if (agent_dir !== undefined) {
+          if (typeof agent_dir !== "string" || agent_dir.trim().length === 0) {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be non-empty string`);
+            sendJson(res, 400, { error: "agent_dir must be a non-empty string" });
+            return;
+          }
+          if (!isAbsolute(agent_dir)) {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be absolute path`);
+            sendJson(res, 400, { error: "agent_dir must be an absolute path" });
+            return;
+          }
+          try {
+            const stat = statSync(agent_dir);
+            if (!stat.isDirectory()) {
+              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=not a directory`);
+              sendJson(res, 400, { error: "agent_dir must be a directory" });
+              return;
+            }
+          } catch {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=does not exist`);
+            sendJson(res, 400, { error: "agent_dir does not exist" });
+            return;
+          }
         }
         if (tools !== undefined) {
           if (!Array.isArray(tools) || !tools.every((t: any) => typeof t === "string")) {
@@ -155,12 +176,18 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             return;
           }
         }
+        // In DEV_MODE (0.0.0.0), ignore agent_dir from requests to prevent
+        // remote callers from steering resource loading (security hardening).
+        const effectiveAgentDir = process.env.DEV_MODE === "true" ? undefined : agent_dir;
+        if (agent_dir && process.env.DEV_MODE === "true") {
+          logger.warn(`[sidecar] POST /sessions: agent_dir ignored in DEV_MODE (security hardening)`);
+        }
         const sessionId = await store.create({
           provider,
           model,
           systemPrompt: system_prompt,
           cwd: cwd || process.cwd(),
-          agentDir: agent_dir,
+          agentDir: effectiveAgentDir,
           tools,
           customTools: custom_tools,
         });

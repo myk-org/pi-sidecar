@@ -358,7 +358,7 @@ export class SessionStore {
     // It also loads AGENTS.md from {cwd}/ root as project agent instructions.
     // Callers control resource loading by setting `cwd` to a directory containing these files.
     // The agentDir controls global resources (user-level skills, extensions, auth, models).
-    const agentDir = options.agentDir || "/tmp/pi-sidecar-agent";
+    const agentDir = options.agentDir ?? "/tmp/pi-sidecar-agent";
     const loader = new DefaultResourceLoader({
       cwd: options.cwd,
       agentDir,

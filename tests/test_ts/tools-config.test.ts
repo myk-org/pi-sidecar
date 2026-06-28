@@ -314,3 +314,57 @@ describe("HTTP tool SDK-compatible assembly", () => {
     assert.equal(result.content[0].text, "ok");
   });
 });
+
+// ---------------------------------------------------------------------------
+// 2c. POST /sessions agent_dir validation
+// ---------------------------------------------------------------------------
+
+describe("POST /sessions agent_dir validation", () => {
+  function createMockRequest(body: any): PassThrough {
+    const stream = new PassThrough();
+    stream.write(JSON.stringify(body));
+    stream.end();
+    return stream;
+  }
+
+  it("rejects non-string agent_dir", async () => {
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test", agent_dir: 123 };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = parsed.agent_dir !== undefined &&
+      (typeof parsed.agent_dir !== "string" || parsed.agent_dir.trim().length === 0);
+    assert.ok(isInvalid, "non-string agent_dir should be rejected");
+  });
+
+  it("rejects empty string agent_dir", async () => {
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test", agent_dir: "" };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = typeof parsed.agent_dir === "string" && parsed.agent_dir.trim().length === 0;
+    assert.ok(isInvalid, "empty string agent_dir should be rejected");
+  });
+
+  it("rejects relative path agent_dir", async () => {
+    const { isAbsolute } = await import("node:path");
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test", agent_dir: "relative/path" };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    assert.ok(!isAbsolute(parsed.agent_dir), "relative path should be rejected");
+  });
+
+  it("accepts valid absolute path agent_dir", async () => {
+    const { isAbsolute } = await import("node:path");
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test", agent_dir: "/tmp/test-agent" };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    assert.ok(isAbsolute(parsed.agent_dir), "absolute path should be accepted");
+    assert.equal(typeof parsed.agent_dir, "string");
+  });
+
+  it("accepts request without agent_dir", async () => {
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test" };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    assert.equal(parsed.agent_dir, undefined, "agent_dir should be undefined when not provided");
+  });
+});
