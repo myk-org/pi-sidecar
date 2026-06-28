@@ -501,8 +501,6 @@ export class SessionStore {
       entry.lastActivity = Date.now();
     }
 
-    usage.duration_ms = Date.now() - startTime;
-
     // Insert \n\n at message boundaries for text responses only.
     // JSON responses must not be modified — the separator would corrupt structured data.
     if (messageBoundaries.length > 0 && responseText.length > 0) {
@@ -525,6 +523,7 @@ export class SessionStore {
       }
     }
 
+    usage.duration_ms = Date.now() - startTime;
     logger.log(`[sidecar] PROMPT_COMPLETED: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration_ms=${usage.duration_ms}`);
 
     // If we got errors from the AI, surface them
