@@ -15,7 +15,10 @@ describe("message boundary separator", () => {
 
     for (const event of events) {
       if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
-        messageBoundaries.push(responseText.length);
+        const lastBoundary = messageBoundaries.length > 0 ? messageBoundaries[messageBoundaries.length - 1] : -1;
+        if (responseText.length !== lastBoundary) {
+          messageBoundaries.push(responseText.length);
+        }
       }
       lastAssistantMessage = event.message;
       responseText += event.delta;
@@ -36,39 +39,43 @@ describe("message boundary separator", () => {
         }
       }
       if (!isJson) {
-        function isInsideJson(pos: number): boolean {
-          for (let si = pos - 1; si >= 0; si--) {
-            const ch = responseText.charCodeAt(si);
-            if (ch !== 123 && ch !== 91) continue;
-            const close = ch === 123 ? 125 : 93;
-            let depth = 1;
-            let inStr = false;
-            let esc = false;
-            for (let ei = si + 1; ei < responseText.length && depth > 0; ei++) {
-              const c = responseText.charCodeAt(ei);
-              if (esc) { esc = false; continue; }
-              if (c === 92) { esc = true; continue; }
-              if (c === 34) { inStr = !inStr; continue; }
-              if (inStr) continue;
-              if (c === ch) depth++;
-              else if (c === close) depth--;
-              if (depth === 0 && ei + 1 > pos) {
-                try {
-                  JSON.parse(responseText.slice(si, ei + 1));
-                  return true;
-                } catch { /* not valid JSON */ }
-                break;
-              }
+        // Find JSON regions (forward scan, skip strings)
+        const jsonRegions: Array<[number, number]> = [];
+        let inStr2 = false, esc2 = false;
+        for (let si = 0; si < responseText.length; si++) {
+          const c = responseText.charCodeAt(si);
+          if (esc2) { esc2 = false; continue; }
+          if (c === 92) { esc2 = true; continue; }
+          if (c === 34) { inStr2 = !inStr2; continue; }
+          if (inStr2) continue;
+          if (c === 123 || c === 91) {
+            const close = c === 123 ? 125 : 93;
+            let depth = 1, s2 = false, e2 = false;
+            let ei = si + 1;
+            for (; ei < responseText.length && depth > 0; ei++) {
+              const ch = responseText.charCodeAt(ei);
+              if (e2) { e2 = false; continue; }
+              if (ch === 92) { e2 = true; continue; }
+              if (ch === 34) { s2 = !s2; continue; }
+              if (s2) continue;
+              if (ch === c) depth++;
+              else if (ch === close) depth--;
             }
-            break;
+            if (depth === 0) {
+              const hasB = messageBoundaries.some(b => b > si && b < ei);
+              if (hasB) {
+                try { JSON.parse(responseText.slice(si, ei)); jsonRegions.push([si, ei]); } catch {}
+              }
+              si = ei - 1;
+            }
           }
-          return false;
         }
 
         const parts: string[] = [];
         let prev = 0;
         for (const pos of messageBoundaries) {
-          if (!isInsideJson(pos)) {
+          const inside = jsonRegions.some(([s, e]) => pos > s && pos < e);
+          if (!inside) {
             parts.push(responseText.slice(prev, pos));
             prev = pos;
           }

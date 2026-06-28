@@ -438,8 +438,12 @@ export class SessionStore {
       if (event.type === "message_start" && (event as any).message?.role === "assistant") {
         assistantMessageCount++;
         if (assistantMessageCount > 1 && responseText.length > 0) {
-          messageBoundaries.push(responseText.length);
-          logger.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
+          // Deduplicate: skip if same offset as last boundary (tool-only messages produce no text)
+          const lastBoundary = messageBoundaries.length > 0 ? messageBoundaries[messageBoundaries.length - 1] : -1;
+          if (responseText.length !== lastBoundary) {
+            messageBoundaries.push(responseText.length);
+            logger.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
+          }
         }
       }
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
@@ -523,40 +527,43 @@ export class SessionStore {
         }
       }
       if (!isJson) {
-        // For each boundary, check if it falls inside a JSON region.
-        // Only scan around boundary positions (not the entire response) for performance.
-        function isInsideJson(pos: number): boolean {
-          // Search backwards from pos to find the nearest unmatched { or [
-          for (let si = pos - 1; si >= 0; si--) {
-            const ch = responseText.charCodeAt(si);
-            if (ch !== 123 /* { */ && ch !== 91 /* [ */) continue;
-            // Found an opener — scan forward to find matching close
-            const close = ch === 123 ? 125 : 93;
+        // Find JSON regions by scanning forward once. Only check openers at top level
+        // (not inside strings) and validate balanced regions with JSON.parse.
+        const jsonRegions: Array<[number, number]> = [];
+        let inStr = false;
+        let esc = false;
+        for (let si = 0; si < responseText.length; si++) {
+          const c = responseText.charCodeAt(si);
+          if (esc) { esc = false; continue; }
+          if (c === 92 /* \\ */) { esc = true; continue; }
+          if (c === 34 /* \" */) { inStr = !inStr; continue; }
+          if (inStr) continue;
+          if (c === 123 /* { */ || c === 91 /* [ */) {
+            const close = c === 123 ? 125 : 93;
             let depth = 1;
-            let inStr = false;
-            let esc = false;
-            for (let ei = si + 1; ei < responseText.length && depth > 0; ei++) {
-              const c = responseText.charCodeAt(ei);
-              if (esc) { esc = false; continue; }
-              if (c === 92) { esc = true; continue; }
-              if (c === 34) { inStr = !inStr; continue; }
-              if (inStr) continue;
-              if (c === ch) depth++;
-              else if (c === close) depth--;
-              if (depth === 0) {
-                // Balanced region [si, ei+1) — does it contain our boundary and parse as JSON?
-                if (ei + 1 > pos) {
-                  try {
-                    JSON.parse(responseText.slice(si, ei + 1));
-                    return true;
-                  } catch { /* not valid JSON */ }
-                }
-                break;
-              }
+            let s2 = false, e2 = false;
+            let ei = si + 1;
+            for (; ei < responseText.length && depth > 0; ei++) {
+              const ch = responseText.charCodeAt(ei);
+              if (e2) { e2 = false; continue; }
+              if (ch === 92) { e2 = true; continue; }
+              if (ch === 34) { s2 = !s2; continue; }
+              if (s2) continue;
+              if (ch === c) depth++;
+              else if (ch === close) depth--;
             }
-            break; // only check the nearest opener
+            if (depth === 0) {
+              // Only protect if a boundary actually falls inside this region
+              const hasRelevantBoundary = messageBoundaries.some(b => b > si && b < ei);
+              if (hasRelevantBoundary) {
+                try {
+                  JSON.parse(responseText.slice(si, ei));
+                  jsonRegions.push([si, ei]);
+                } catch { /* not valid JSON */ }
+              }
+              si = ei - 1; // skip past balanced region
+            }
           }
-          return false;
         }
 
         // Insert \n\n at boundaries that don't fall inside JSON regions
@@ -564,7 +571,8 @@ export class SessionStore {
         let prev = 0;
         let applied = 0;
         for (const pos of messageBoundaries) {
-          if (!isInsideJson(pos)) {
+          const insideJson = jsonRegions.some(([start, end]) => pos > start && pos < end);
+          if (!insideJson) {
             parts.push(responseText.slice(prev, pos));
             prev = pos;
             applied++;
