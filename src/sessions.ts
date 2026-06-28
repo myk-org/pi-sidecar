@@ -506,8 +506,13 @@ export class SessionStore {
     // Insert \n\n at message boundaries for text responses only.
     // JSON responses must not be modified — the separator would corrupt structured data.
     if (messageBoundaries.length > 0 && responseText.length > 0) {
-      const trimmed = responseText.trim();
-      const isJson = (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+      let isJson = false;
+      try {
+        JSON.parse(responseText);
+        isJson = true;
+      } catch {
+        // Not valid JSON — treat as text
+      }
       if (!isJson) {
         // Insert \n\n at each boundary offset (reverse order to preserve positions)
         for (let i = messageBoundaries.length - 1; i >= 0; i--) {
@@ -520,7 +525,7 @@ export class SessionStore {
       }
     }
 
-    logger.log(`[sidecar] Prompt completed: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration=${usage.duration_ms}ms`);
+    logger.log(`[sidecar] PROMPT_COMPLETED: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration_ms=${usage.duration_ms}`);
 
     // If we got errors from the AI, surface them
     if (errors.length > 0) {
