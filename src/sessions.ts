@@ -397,6 +397,7 @@ export class SessionStore {
     let errorsDropped = 0;
     let responseText = "";
     let textDeltaCount = 0;
+    let lastAssistantMessage: object | null = null;
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: null as number | null, duration_ms: 0 };
     const startTime = Date.now();
 
@@ -424,6 +425,11 @@ export class SessionStore {
         logger.error(`[sidecar] Prompt error event: session=${id}, error=${errorMsg}`);
       }
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+        if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
+          responseText += "\n\n";
+          logger.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
+        }
+        lastAssistantMessage = event.message;
         responseText += event.assistantMessageEvent.delta;
         textDeltaCount++;
       }
