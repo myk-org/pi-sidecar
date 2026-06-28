@@ -24,14 +24,17 @@ pi-sidecar/                        (repo root = npm package root)
 │   ├── index.ts                    # HTTP server, routing, JSON helpers, startSidecar()
 │   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery, error surfacing
 │   ├── http-tool-executor.ts       # HTTP-backed custom tool executor with parameter interpolation
+│   ├── logger.ts                   # Log-level-aware logger wrapping console.* APIs (gated by PI_SIDECAR_LOG_LEVEL)
 │   └── watchdog.ts                 # Health-check poller; kills sidecar when backend is unresponsive
 ├── tests/
 │   ├── test_ts/                    # TypeScript sidecar tests
+│   │   ├── agent-dir-integration.test.ts # agent_dir validation and agentDir fallback tests
+│   │   ├── http-tool-executor.test.ts # HTTP tool executor tests (interpolation, security, timeout)
+│   │   ├── message-boundary.test.ts # Multi-message newline separator tests
 │   │   ├── parse-body.test.ts     # Body parser tests
 │   │   ├── route-match.test.ts    # URL route matching tests
-│   │   ├── watchdog.test.ts       # Health check watchdog tests
-│   │   ├── http-tool-executor.test.ts # HTTP tool executor tests (interpolation, security, timeout)
-│   │   └── tools-config.test.ts   # DEFAULT_TOOLS constant and tools config tests
+│   │   ├── tools-config.test.ts   # DEFAULT_TOOLS constant, tools config, and agent_dir validation tests
+│   │   └── watchdog.test.ts       # Health check watchdog tests
 │   └── test_python/                # Python client tests
 │       ├── conftest.py            # Shared test fixtures
 │       └── test_sidecar_client.py # Client unit tests
@@ -110,7 +113,7 @@ All code paths **must** have appropriate logging. Silent failures are bugs.
 
 ### TypeScript (`src/`)
 
-- Use `console.error`, `console.warn`, `console.info`, `console.log`, `console.debug`
+- Use `logger.*` from `src/logger.ts` (wraps `console.*` with `PI_SIDECAR_LOG_LEVEL` gating)
 - Prefix all messages with `[sidecar]` (or `[watchdog]` for watchdog)
 - Format: `[sidecar] ACTION: key=value, key=value`
 - Log timing on all mutating operations: `POST /sessions 201 10ms session=...`
@@ -182,3 +185,7 @@ The HTTP server binds to `127.0.0.1` unless `DEV_MODE=true` (which opens `0.0.0.
 ### 5. ACPX model discovery uses `acpx/runtime` library, not CLI
 
 Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library API (`createAcpRuntime` → `ensureSession` → `getStatus`) instead of spawning `acpx --model __list__` as a subprocess and parsing stderr. The library approach is more reliable (no text parsing), provides proper error handling, and returns model IDs with their full bracket-notation options (e.g. `gpt-5.4[context=272k,reasoning=medium]`). Discovery has a 30 s timeout per agent. The `getModels()` method deduplicates builtin placeholder models against discovered ACPX models by comparing base IDs (stripping bracket suffixes).
+
+### 6. Resource loading via `cwd` and `agent_dir`
+
+The Pi SDK's `DefaultResourceLoader` automatically loads project-level resources from `{cwd}/.pi/` (skills, prompts, extensions, themes) and `AGENTS.md` from `{cwd}/`. Callers control this by setting `cwd` in `POST /sessions`. The optional `agent_dir` parameter provides a global agent directory for user-level resources. It defaults to `/tmp/pi-sidecar-agent` when omitted. Validation requires `agent_dir` to be an absolute path pointing to an existing directory; in `DEV_MODE` (0.0.0.0 binding), `agent_dir` is silently ignored to prevent remote callers from steering resource loading.
