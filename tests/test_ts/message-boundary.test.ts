@@ -64,9 +64,16 @@ describe("message boundary separator", () => {
             if (depth === 0) {
               const hasB = messageBoundaries.some(b => b > si && b < ei);
               if (hasB) {
-                try { JSON.parse(responseText.slice(si, ei)); jsonRegions.push([si, ei]); } catch {}
+                try {
+                  JSON.parse(responseText.slice(si, ei));
+                  jsonRegions.push([si, ei]);
+                  si = ei - 1;
+                } catch {
+                  // Not valid JSON — don't skip, inner regions may be valid
+                }
+              } else {
+                si = ei - 1;
               }
-              si = ei - 1;
             }
           }
         }

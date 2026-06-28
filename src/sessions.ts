@@ -559,9 +559,13 @@ export class SessionStore {
                 try {
                   JSON.parse(responseText.slice(si, ei));
                   jsonRegions.push([si, ei]);
-                } catch { /* not valid JSON */ }
+                  si = ei - 1; // skip past valid JSON region only
+                } catch {
+                  // Balanced but not valid JSON — don't skip, inner regions may be valid
+                }
+              } else {
+                si = ei - 1; // no boundaries inside, safe to skip
               }
-              si = ei - 1; // skip past balanced region
             }
           }
         }
