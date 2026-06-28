@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration and Environment Variables - pi-sidecar</title>
+    <meta name="description" content="Call AI coding agents from Python, shell, or any language through a simple REST API">
+    <link rel="stylesheet" href="assets/style.css">
+    <script>try{var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
+    <link rel="alternate" type="text/plain" title="LLM Documentation Index" href="llms.txt">
+    <link rel="alternate" type="text/plain" title="LLM Full Documentation" href="llms-full.txt">
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="index.html" class="sidebar-logo">pi-sidecar</a>
+            <p class="sidebar-tagline">Call AI coding agents from Python, shell, or any language through a simple REST API</p>
+        </div>
+
+        <div class="sidebar-search">
+            <input type="text" id="search-input" placeholder="Search... (⌘K)" autocomplete="off" readonly>
+            <div id="search-results" class="search-results"></div>
+        </div>
+
+        <nav class="sidebar-nav">
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Getting Started</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="quickstart.html"
+                           class="nav-link">
+                            Getting Started with pi-sidecar
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">User Guides</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="sending-prompts.html"
+                           class="nav-link">
+                            Sending Prompts to AI Models
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="discovering-models.html"
+                           class="nav-link">
+                            Discovering and Selecting Models
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="managing-sessions.html"
+                           class="nav-link">
+                            Managing Session Lifecycle
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuring-tools.html"
+                           class="nav-link">
+                            Configuring Built-in and Custom Tools
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="running-parallel-tasks.html"
+                           class="nav-link">
+                            Running Parallel AI Calls
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="tracking-usage.html"
+                           class="nav-link">
+                            Tracking Token Usage and Costs
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="embedding-in-node.html"
+                           class="nav-link">
+                            Embedding the Sidecar in a Node.js Application
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuring-watchdog.html"
+                           class="nav-link">
+                            Monitoring a Companion Backend with the Watchdog
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Recipes</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="recipes-python-client.html"
+                           class="nav-link">
+                            Python Client Recipes
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="recipes-rest-api.html"
+                           class="nav-link">
+                            REST API Recipes
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Reference</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="rest-api-reference.html"
+                           class="nav-link">
+                            REST API Reference
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="python-client-reference.html"
+                           class="nav-link">
+                            Python Client API Reference
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuration-reference.html"
+                           class="nav-link active" aria-current="page">
+                            Configuration and Environment Variables
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="http-tool-executor-reference.html"
+                           class="nav-link">
+                            HTTP Tool Executor Reference
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+        </nav>
+    </aside>
+
+    <div class="main-wrapper">
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <a href="index.html" class="top-bar-title">pi-sidecar</a>
+            </div>
+            <div class="top-bar-spacer"></div>
+            <div class="top-bar-right">
+                <button class="top-bar-search-btn" id="search-trigger" aria-label="Search">
+                    <kbd>&#8984;K</kbd> Search
+                </button>
+                <a href="https://github.com/myk-org/docsfy" target="_blank" rel="noopener" class="docsfy-badge" title="Generated with docsfy">
+                    ⚡ docs<span class="brand-accent">fy</span>
+                </a>
+                
+                <a href="https://github.com/myk-org/pi-sidecar.git" target="_blank" rel="noopener noreferrer" class="top-bar-github" id="github-link" data-repo-url="https://github.com/myk-org/pi-sidecar.git">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    <span class="github-stars" id="github-stars" title="GitHub stars"></span>
+                </a>
+                
+                <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="content">
+            
+            <article class="article">
+                <div class="article-body">
+                    <!-- SECURITY: |safe is intentional. Content is AI-generated markdown
+                         converted to HTML server-side by the markdown library, not
+                         user-supplied input. XSS risk is minimal and accepted since
+                         the AI generates the content, not end users. -->
+                    <p>Let me start by reading the graph report and page manifest, then explore the source files for all configuration and environment variables.</p>
+<p>Now let me check the Python client for environment variables it uses:</p>
+<p>Now let me check for any additional environment variables I might have missed:</p>
+<p>Now let me check the examples for startup options usage:</p>
+<p>Now I have all the information I need. Let me compose the reference page.</p>
+<h1 id="configuration-and-environment-variables">Configuration and Environment Variables</h1>
+<p>Reference for all environment variables and programmatic startup options that control the pi-sidecar server and Python client behavior.</p>
+<hr />
+<h2 id="environment-variables-sidecar-server-typescript">Environment Variables — Sidecar Server (TypeScript)</h2>
+<p>These environment variables are read by the <code>@myk-org/pi-sidecar</code> Node.js server process.</p>
+<h3 id="sidecar_port"><code>SIDECAR_PORT</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>Integer (string-encoded)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>9100</code></td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>startSidecar()</code> in <code>src/index.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p>TCP port the sidecar HTTP server listens on. Overridden by the <code>port</code> option in <code>startSidecar()</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">SIDECAR_PORT</span><span class="o">=</span><span class="m">9200</span><span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<hr />
+<h3 id="dev_mode"><code>DEV_MODE</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (<code>"true"</code> to enable)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Not set (disabled)</td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>startSidecar()</code> in <code>src/index.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p>Controls two behaviors:</p>
+<table>
+<thead>
+<tr>
+<th>Behavior</th>
+<th><code>DEV_MODE</code> unset / not <code>"true"</code></th>
+<th><code>DEV_MODE=true</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Bind address</strong></td>
+<td><code>127.0.0.1</code> (localhost only)</td>
+<td><code>0.0.0.0</code> (all interfaces)</td>
+</tr>
+<tr>
+<td><strong><code>agent_dir</code> handling</strong></td>
+<td>Validated (must be absolute path to existing directory) and passed to the Pi SDK</td>
+<td>Type-checked but value is <strong>discarded</strong> with a warning — prevents remote callers from steering resource loading</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Warning:</strong> Setting <code>DEV_MODE=true</code> exposes the sidecar on all network interfaces. The sidecar has <strong>no authentication</strong>. Only use this in trusted development environments.</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><span class="nv">DEV_MODE</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="nv">SIDECAR_PORT</span><span class="o">=</span><span class="m">9100</span><span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<hr />
+<h3 id="pi_sidecar_log_level"><code>PI_SIDECAR_LOG_LEVEL</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String: <code>debug</code>, <code>info</code>, <code>warn</code>, or <code>error</code></td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>info</code></td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>src/logger.ts</code> (TypeScript server), <code>pi_sidecar_client/__init__.py</code> (Python client)</td>
+</tr>
+</tbody>
+</table>
+<p>Controls log verbosity for <strong>both</strong> the TypeScript sidecar server and the Python client. Log messages at or above the configured level are emitted; messages below are suppressed.</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Output includes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>debug</code></td>
+<td>All messages: request tracing, model resolution, internal details</td>
+</tr>
+<tr>
+<td><code>info</code></td>
+<td>Lifecycle events, request completions with timing, model discovery</td>
+</tr>
+<tr>
+<td><code>warn</code></td>
+<td>Validation failures, empty responses, cleanup failures</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>Operation failures, AI errors, unhandled exceptions</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>debug<span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<hr />
+<h3 id="acpx_agents"><code>ACPX_AGENTS</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>Comma-separated string of agent names</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>""</code> (empty — no ACPX discovery)</td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>SessionStore.refreshModels()</code> in <code>src/sessions.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p>List of ACPX agent names to discover models from at startup and on <code>POST /models/refresh</code>. Each agent is queried via the <code>acpx/runtime</code> library with a 30-second timeout. Agent names must match the pattern <code>[a-z0-9_-]+</code>.</p>
+<p>Discovered models are registered with provider <code>acpx-&lt;agent&gt;</code> and model IDs prefixed with <code>&lt;agent&gt;:</code> (e.g., <code>cursor:gpt-5.4[context=272k,reasoning=medium]</code>).</p>
+<div class="highlight"><pre><span></span><code><span class="nv">ACPX_AGENTS</span><span class="o">=</span>cursor<span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="nv">ACPX_AGENTS</span><span class="o">=</span>cursor,windsurf<span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<hr />
+<h3 id="sidecar_watchdog_url"><code>SIDECAR_WATCHDOG_URL</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>URL string</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Not set (watchdog disabled)</td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>startSidecar()</code> in <code>src/index.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p>Health endpoint URL for the companion backend watchdog. When set, the sidecar polls this URL periodically and shuts down after repeated failures. Overridden by the <code>watchdogUrl</code> option in <code>startSidecar()</code>.</p>
+<p>See <a href="configuring-watchdog.html">Monitoring a Companion Backend with the Watchdog</a> for usage patterns.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">SIDECAR_WATCHDOG_URL</span><span class="o">=</span>http://localhost:8000/health<span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<hr />
+<h3 id="sidecar_acpx_extension_path"><code>SIDECAR_ACPX_EXTENSION_PATH</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>Absolute file path</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Auto-resolved from <code>pi-orchestrator-config</code> package (<code>extensions/acpx-provider/index.ts</code>)</td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>resolveExtensionPath()</code> in <code>src/sessions.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p>Overrides the auto-detected path to the ACPX provider extension file. Use this when the extension is installed in a non-standard location.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">SIDECAR_ACPX_EXTENSION_PATH</span><span class="o">=</span>/opt/extensions/acpx-provider/index.ts<span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<hr />
+<h3 id="sidecar_vertex_extension_path"><code>SIDECAR_VERTEX_EXTENSION_PATH</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>Absolute file path</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Auto-resolved from <code>pi-vertex-claude</code> package (<code>index.ts</code>)</td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>resolveExtensionPath()</code> in <code>src/sessions.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p>Overrides the auto-detected path to the Vertex Claude extension file. Use this when the extension is installed in a non-standard location.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">SIDECAR_VERTEX_EXTENSION_PATH</span><span class="o">=</span>/opt/extensions/pi-vertex-claude/index.ts<span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<hr />
+<h2 id="environment-variables-python-client">Environment Variables — Python Client</h2>
+<p>These environment variables are read by the <code>pi_sidecar_client</code> Python package.</p>
+<h3 id="sidecar_url"><code>SIDECAR_URL</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>URL string</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>http://127.0.0.1:9100</code></td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>pi_sidecar_client/__init__.py</code></td>
+</tr>
+</tbody>
+</table>
+<p>Base URL of the sidecar HTTP server. Used by <code>SidecarClient</code> and all convenience functions (<code>call_ai</code>, <code>call_ai_once</code>, <code>list_models</code>, <code>check_sidecar_available</code>).</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_URL</span><span class="o">=</span>http://127.0.0.1:9200
+python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;from pi_sidecar_client import check_sidecar_available; import asyncio; print(asyncio.run(check_sidecar_available()))&quot;</span>
+</code></pre></div>
+
+<p>You can also override per-client by passing <code>base_url</code> to the <code>SidecarClient</code> constructor:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">SidecarClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">SidecarClient</span><span class="p">(</span><span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;http://127.0.0.1:9200&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<hr />
+<h3 id="pi_sidecar_log_level-python"><code>PI_SIDECAR_LOG_LEVEL</code> (Python)</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String: <code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>, <code>ERROR</code></td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>INFO</code></td>
+</tr>
+<tr>
+<td><strong>Read by</strong></td>
+<td><code>pi_sidecar_client/__init__.py</code></td>
+</tr>
+</tbody>
+</table>
+<p>Controls the Python client's log verbosity. This is the same variable name used by the TypeScript server, so a single export configures both when running on the same host.</p>
+<blockquote>
+<p><strong>Note:</strong> The Python client accepts standard Python logging level names (uppercase), while the TypeScript server accepts lowercase. Both read from the same <code>PI_SIDECAR_LOG_LEVEL</code> variable. Setting <code>debug</code> works for both since the Python logger normalizes case.</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span>python<span class="w"> </span>my_script.py
+</code></pre></div>
+
+<hr />
+<h2 id="programmatic-startup-options-startsidecar">Programmatic Startup Options (<code>startSidecar</code>)</h2>
+<p>The <code>startSidecar()</code> function accepts an options object for programmatic embedding. These options <strong>take precedence</strong> over their corresponding environment variables.</p>
+<p>See <a href="embedding-in-node.html">Embedding the Sidecar in a Node.js Application</a> for integration patterns.</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">startSidecar</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;@myk-org/pi-sidecar&quot;</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">handle</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">startSidecar</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">port</span><span class="o">:</span><span class="w"> </span><span class="kt">9200</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">host</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">watchdogUrl</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:8000/health&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">watchdogOptions</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">intervalMs</span><span class="o">:</span><span class="w"> </span><span class="kt">15_000</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">timeoutMs</span><span class="o">:</span><span class="w"> </span><span class="kt">5_000</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">maxFailures</span><span class="o">:</span><span class="w"> </span><span class="kt">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">startDelayMs</span><span class="o">:</span><span class="w"> </span><span class="kt">30_000</span><span class="p">,</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<h3 id="startsidecar-options"><code>startSidecar</code> Options</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Env Var Fallback</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>port</code></td>
+<td><code>number</code></td>
+<td><code>9100</code></td>
+<td><code>SIDECAR_PORT</code></td>
+<td>TCP port to listen on</td>
+</tr>
+<tr>
+<td><code>host</code></td>
+<td><code>string</code></td>
+<td><code>"127.0.0.1"</code> (or <code>"0.0.0.0"</code> if <code>DEV_MODE=true</code>)</td>
+<td><code>DEV_MODE</code></td>
+<td>Network interface to bind to</td>
+</tr>
+<tr>
+<td><code>watchdogUrl</code></td>
+<td><code>string</code></td>
+<td><code>undefined</code></td>
+<td><code>SIDECAR_WATCHDOG_URL</code></td>
+<td>Health endpoint URL for the companion backend watchdog</td>
+</tr>
+<tr>
+<td><code>watchdogOptions</code></td>
+<td><code>WatchdogOptions</code></td>
+<td>See below</td>
+<td>—</td>
+<td>Fine-tune watchdog polling behavior</td>
+</tr>
+</tbody>
+</table>
+<h3 id="watchdogoptions"><code>WatchdogOptions</code></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>intervalMs</code></td>
+<td><code>number</code></td>
+<td><code>30000</code> (30s)</td>
+<td>Polling interval between health checks. Minimum: <code>1000</code>.</td>
+</tr>
+<tr>
+<td><code>timeoutMs</code></td>
+<td><code>number</code></td>
+<td><code>10000</code> (10s)</td>
+<td>Timeout for each individual health check request. Minimum: <code>1000</code>.</td>
+</tr>
+<tr>
+<td><code>maxFailures</code></td>
+<td><code>number</code></td>
+<td><code>6</code></td>
+<td>Consecutive failures before triggering shutdown (~3 minutes at default interval). Minimum: <code>1</code>.</td>
+</tr>
+<tr>
+<td><code>startDelayMs</code></td>
+<td><code>number</code></td>
+<td><code>60000</code> (60s)</td>
+<td>Grace period before the first health check. Allows the companion backend time to start. Minimum: <code>0</code>.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">handle</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">startSidecar</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">watchdogUrl</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:8000/health&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">watchdogOptions</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">intervalMs</span><span class="o">:</span><span class="w"> </span><span class="kt">10_000</span><span class="p">,</span><span class="w">   </span><span class="c1">// check every 10 seconds</span>
+<span class="w">    </span><span class="nx">maxFailures</span><span class="o">:</span><span class="w"> </span><span class="kt">10</span><span class="p">,</span><span class="w">      </span><span class="c1">// tolerate 10 failures (~100 seconds)</span>
+<span class="w">    </span><span class="nx">startDelayMs</span><span class="o">:</span><span class="w"> </span><span class="kt">120_000</span><span class="w"> </span><span class="c1">// wait 2 minutes before first check</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<h3 id="sidecarhandle"><code>SidecarHandle</code></h3>
+<p><code>startSidecar()</code> returns a <code>SidecarHandle</code> object:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>close</code></td>
+<td><code>() =&gt; Promise&lt;void&gt;</code></td>
+<td>Gracefully shuts down the server: stops the watchdog, clears the stale-session cleanup interval, disposes all sessions, and closes the HTTP listener.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="c1">// Graceful shutdown</span>
+<span class="nx">process</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s2">&quot;SIGINT&quot;</span><span class="p">,</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">handle</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="w">  </span><span class="nx">process</span><span class="p">.</span><span class="nx">exit</span><span class="p">(</span><span class="mf">0</span><span class="p">);</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<hr />
+<h2 id="internal-defaults-non-configurable">Internal Defaults (Non-configurable)</h2>
+<p>These values are hardcoded in the source and not configurable via environment variables or options. They are documented here for operational awareness.</p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Location</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Max request body size</td>
+<td>1 MB (<code>1_048_576</code> bytes)</td>
+<td><code>src/index.ts</code></td>
+<td>Requests exceeding this limit receive HTTP 413</td>
+</tr>
+<tr>
+<td>Stale session max age</td>
+<td>1 hour (<code>3_600_000</code> ms)</td>
+<td><code>src/index.ts</code></td>
+<td>Idle sessions older than this are cleaned up</td>
+</tr>
+<tr>
+<td>Stale session cleanup interval</td>
+<td>10 minutes</td>
+<td><code>src/index.ts</code></td>
+<td>How often the cleanup sweep runs</td>
+</tr>
+<tr>
+<td>ACPX discovery timeout</td>
+<td>30 seconds per agent</td>
+<td><code>src/sessions.ts</code></td>
+<td>Timeout for each ACPX agent model discovery call</td>
+</tr>
+<tr>
+<td>HTTP tool request timeout</td>
+<td>30 seconds</td>
+<td><code>src/http-tool-executor.ts</code></td>
+<td>Default timeout for HTTP-backed custom tool requests (overridable per-tool via <code>timeoutMs</code> in <code>HttpToolConfig</code>)</td>
+</tr>
+<tr>
+<td>HTTP tool max response size</td>
+<td>1 MB (<code>1_048_576</code> bytes)</td>
+<td><code>src/http-tool-executor.ts</code></td>
+<td>Responses exceeding this limit are truncated</td>
+</tr>
+<tr>
+<td>Default <code>agentDir</code></td>
+<td><code>/tmp/pi-sidecar-agent</code></td>
+<td><code>src/sessions.ts</code></td>
+<td>Used when <code>agent_dir</code> is not provided in <code>POST /sessions</code></td>
+</tr>
+<tr>
+<td>Default tools</td>
+<td><code>read</code>, <code>grep</code>, <code>find</code>, <code>ls</code>, <code>bash</code></td>
+<td><code>src/sessions.ts</code></td>
+<td>Builtin tool set when <code>tools</code> is not specified at session creation</td>
+</tr>
+<tr>
+<td>Python client HTTP timeout</td>
+<td>600 seconds</td>
+<td><code>pi_sidecar_client/__init__.py</code></td>
+<td>Default <code>httpx</code> timeout for all Python client requests</td>
+</tr>
+<tr>
+<td>Excluded providers</td>
+<td><code>github-copilot</code></td>
+<td><code>src/sessions.ts</code></td>
+<td>Providers requiring browser OAuth are excluded from model listing</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Tip:</strong> The HTTP tool request timeout <em>is</em> configurable per-tool via the <code>timeoutMs</code> field in <code>HttpToolConfig</code>. See <a href="http-tool-executor-reference.html">HTTP Tool Executor Reference</a> for details.</p>
+</blockquote>
+<hr />
+<h2 id="quick-reference-table">Quick Reference Table</h2>
+<p>All environment variables in one place:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Component</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SIDECAR_PORT</code></td>
+<td>Server</td>
+<td><code>9100</code></td>
+<td>HTTP listen port</td>
+</tr>
+<tr>
+<td><code>DEV_MODE</code></td>
+<td>Server</td>
+<td>unset</td>
+<td>Bind <code>0.0.0.0</code>, disable <code>agent_dir</code> enforcement</td>
+</tr>
+<tr>
+<td><code>PI_SIDECAR_LOG_LEVEL</code></td>
+<td>Server + Client</td>
+<td><code>info</code></td>
+<td>Log verbosity (<code>debug</code> / <code>info</code> / <code>warn</code> / <code>error</code>)</td>
+</tr>
+<tr>
+<td><code>ACPX_AGENTS</code></td>
+<td>Server</td>
+<td><code>""</code></td>
+<td>Comma-separated ACPX agents for model discovery</td>
+</tr>
+<tr>
+<td><code>SIDECAR_WATCHDOG_URL</code></td>
+<td>Server</td>
+<td>unset</td>
+<td>Companion backend health URL (enables watchdog)</td>
+</tr>
+<tr>
+<td><code>SIDECAR_ACPX_EXTENSION_PATH</code></td>
+<td>Server</td>
+<td>auto-resolved</td>
+<td>Override ACPX extension file path</td>
+</tr>
+<tr>
+<td><code>SIDECAR_VERTEX_EXTENSION_PATH</code></td>
+<td>Server</td>
+<td>auto-resolved</td>
+<td>Override Vertex Claude extension file path</td>
+</tr>
+<tr>
+<td><code>SIDECAR_URL</code></td>
+<td>Python Client</td>
+<td><code>http://127.0.0.1:9100</code></td>
+<td>Sidecar base URL for the Python client</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="example-full-production-startup">Example: Full Production Startup</h2>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_PORT</span><span class="o">=</span><span class="m">9100</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>info
+<span class="nb">export</span><span class="w"> </span><span class="nv">ACPX_AGENTS</span><span class="o">=</span>cursor
+<span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_WATCHDOG_URL</span><span class="o">=</span>http://localhost:8000/health
+
+node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<h2 id="example-development-startup">Example: Development Startup</h2>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">DEV_MODE</span><span class="o">=</span><span class="nb">true</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>debug
+<span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_PORT</span><span class="o">=</span><span class="m">9200</span>
+
+npx<span class="w"> </span>tsx<span class="w"> </span>src/server.ts
+</code></pre></div>
+
+<h2 id="example-python-client-with-custom-url">Example: Python Client with Custom URL</h2>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_URL</span><span class="o">=</span>http://127.0.0.1:9200
+<span class="nb">export</span><span class="w"> </span><span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>DEBUG
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">call_ai_once</span><span class="p">(</span>
+    <span class="s2">&quot;Hello!&quot;</span><span class="p">,</span>
+    <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+    <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+<span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</code></pre></div>
+
+<h2 id="related-pages">Related Pages</h2>
+<ul>
+<li><a href="quickstart.html">Getting Started with pi-sidecar</a></li>
+<li><a href="embedding-in-node.html">Embedding the Sidecar in a Node.js Application</a></li>
+<li><a href="configuring-watchdog.html">Monitoring a Companion Backend with the Watchdog</a></li>
+<li><a href="rest-api-reference.html">REST API Reference</a></li>
+<li><a href="http-tool-executor-reference.html">HTTP Tool Executor Reference</a></li>
+</ul>
+                </div>
+            </article>
+            <nav class="page-nav">
+                
+                <a href="python-client-reference.html" class="page-nav-link page-nav-prev">
+                    <span class="page-nav-label">Previous</span>
+                    <span class="page-nav-title">Python Client API Reference</span>
+                </a>
+                
+                
+                <a href="http-tool-executor-reference.html" class="page-nav-link page-nav-next">
+                    <span class="page-nav-label">Next</span>
+                    <span class="page-nav-title">HTTP Tool Executor Reference</span>
+                </a>
+                
+            </nav>
+            
+            <aside class="toc-sidebar">
+                <div class="toc-container">
+                    <h3>On this page</h3>
+                    <div class="toc">
+<ul>
+<li><a href="#environment-variables-sidecar-server-typescript">Environment Variables — Sidecar Server (TypeScript)</a><ul>
+<li><a href="#sidecar_port">SIDECAR_PORT</a></li>
+<li><a href="#dev_mode">DEV_MODE</a></li>
+<li><a href="#pi_sidecar_log_level">PI_SIDECAR_LOG_LEVEL</a></li>
+<li><a href="#acpx_agents">ACPX_AGENTS</a></li>
+<li><a href="#sidecar_watchdog_url">SIDECAR_WATCHDOG_URL</a></li>
+<li><a href="#sidecar_acpx_extension_path">SIDECAR_ACPX_EXTENSION_PATH</a></li>
+<li><a href="#sidecar_vertex_extension_path">SIDECAR_VERTEX_EXTENSION_PATH</a></li>
+</ul>
+</li>
+<li><a href="#environment-variables-python-client">Environment Variables — Python Client</a><ul>
+<li><a href="#sidecar_url">SIDECAR_URL</a></li>
+<li><a href="#pi_sidecar_log_level-python">PI_SIDECAR_LOG_LEVEL (Python)</a></li>
+</ul>
+</li>
+<li><a href="#programmatic-startup-options-startsidecar">Programmatic Startup Options (startSidecar)</a><ul>
+<li><a href="#startsidecar-options">startSidecar Options</a></li>
+<li><a href="#watchdogoptions">WatchdogOptions</a></li>
+<li><a href="#sidecarhandle">SidecarHandle</a></li>
+</ul>
+</li>
+<li><a href="#internal-defaults-non-configurable">Internal Defaults (Non-configurable)</a></li>
+<li><a href="#quick-reference-table">Quick Reference Table</a></li>
+<li><a href="#example-full-production-startup">Example: Full Production Startup</a></li>
+<li><a href="#example-development-startup">Example: Development Startup</a></li>
+<li><a href="#example-python-client-with-custom-url">Example: Python Client with Custom URL</a></li>
+<li><a href="#related-pages">Related Pages</a></li>
+</ul>
+</div>
+
+                </div>
+            </aside>
+            
+
+        </main>
+
+        <footer class="page-footer">
+            
+            <span class="footer-version">Generated from version 1.1.5</span>
+            <span class="footer-sep">&middot;</span>
+            
+            Generated with <a href="https://github.com/myk-org/docsfy" target="_blank" rel="noopener">docs<span class="brand-accent">fy</span></a>
+            <span class="footer-sep">&middot;</span>
+            <span class="footer-llm">LLM-friendly: <a href="llms.txt">llms.txt</a> &middot; <a href="llms-full.txt">llms-full.txt</a></span>
+        </footer>
+    </div>
+
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <script src="assets/theme.js"></script>
+    <script src="assets/search.js"></script>
+    <script src="assets/copy.js"></script>
+    <script src="assets/callouts.js"></script>
+    <script src="assets/scrollspy.js"></script>
+    <script src="assets/codelabels.js"></script>
+    <script src="assets/github.js"></script>
+    <script>
+(function() {
+    var toggle = document.getElementById('sidebar-toggle');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebar-overlay');
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+            if (overlay) overlay.classList.toggle('open');
+            var expanded = sidebar.classList.contains('open');
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        });
+    }
+    if (overlay) {
+        overlay.addEventListener('click', function() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        });
+    }
+})();
+</script>
+<script>
+(function() {
+    var sidebar = document.querySelector('.sidebar-nav') || document.querySelector('.sidebar');
+    if (!sidebar) return;
+
+    // Restore scroll position
+    var saved = sessionStorage.getItem('sidebar-scroll');
+    if (saved) sidebar.scrollTop = parseInt(saved, 10);
+
+    // Save scroll position before navigating
+    sidebar.addEventListener('scroll', function() {
+        sessionStorage.setItem('sidebar-scroll', sidebar.scrollTop.toString());
+    });
+
+    // Also scroll active link into view if no saved position
+    if (!saved) {
+        var active = sidebar.querySelector('.nav-link.active');
+        if (active) {
+            active.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }
+    }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# pi-sidecar
+
+> Call AI coding agents from Python, shell, or any language through a simple REST API
+
+## Getting Started
+
+- [Getting Started with pi-sidecar](quickstart.md): Install the sidecar server and Python client, start the service, and make your first AI call in under 60 seconds
+
+## User Guides
+
+- [Sending Prompts to AI Models](sending-prompts.md): Learn how to send single-shot prompts with call_ai_once and manage sessions manually for multi-turn conversations
+- [Discovering and Selecting Models](discovering-models.md): List available AI models, filter by provider, trigger model refresh, and understand provider name mapping (gemini, cursor, claude)
+- [Managing Session Lifecycle](managing-sessions.md): Create, reuse, abort, and delete sessions — understand when to use call_ai vs call_ai_once and how to handle cleanup
+- [Configuring Built-in and Custom Tools](configuring-tools.md): Override the default tool set (read, grep, find, ls, bash), add custom tools, and wire up HTTP-backed tools with parameter interpolation
+- [Running Parallel AI Calls](running-parallel-tasks.md): Execute multiple AI prompts concurrently with run_parallel_with_limit to control throughput and avoid overwhelming the sidecar
+- [Tracking Token Usage and Costs](tracking-usage.md): Register a usage recorder callback to capture token counts, costs, and timing for billing, analytics, or debugging
+- [Embedding the Sidecar in a Node.js Application](embedding-in-node.md): Start the sidecar programmatically from TypeScript/Node with custom port, host, and watchdog configuration
+- [Monitoring a Companion Backend with the Watchdog](configuring-watchdog.md): Enable the opt-in health-check watchdog to automatically shut down the sidecar when a companion backend becomes unresponsive
+
+## Recipes
+
+- [Python Client Recipes](recipes-python-client.md): Copy-paste patterns for common Python workflows: health checks, error handling, resource loading via cwd, and session cleanup
+- [REST API Recipes](recipes-rest-api.md): Copy-paste curl and HTTP examples for every sidecar endpoint: health, models, sessions, prompts, and abort
+
+## Reference
+
+- [REST API Reference](rest-api-reference.md): Complete reference for all HTTP endpoints: request/response schemas, status codes, error formats, and validation rules
+- [Python Client API Reference](python-client-reference.md): Full API reference for SidecarClient, call_ai, call_ai_once, list_models, AIResult, AITokenUsage, and all public functions
+- [Configuration and Environment Variables](configuration-reference.md): Reference for all environment variables (SIDECAR_PORT, SIDECAR_URL, DEV_MODE, PI_SIDECAR_LOG_LEVEL, ACPX_AGENTS) and startup options
+- [HTTP Tool Executor Reference](http-tool-executor-reference.md): Reference for HttpToolConfig schema, parameter interpolation syntax, security hardening (URI encoding, CRLF stripping, JSON escaping), timeouts, and response limits

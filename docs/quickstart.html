@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Getting Started with pi-sidecar - pi-sidecar</title>
+    <meta name="description" content="Call AI coding agents from Python, shell, or any language through a simple REST API">
+    <link rel="stylesheet" href="assets/style.css">
+    <script>try{var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
+    <link rel="alternate" type="text/plain" title="LLM Documentation Index" href="llms.txt">
+    <link rel="alternate" type="text/plain" title="LLM Full Documentation" href="llms-full.txt">
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="index.html" class="sidebar-logo">pi-sidecar</a>
+            <p class="sidebar-tagline">Call AI coding agents from Python, shell, or any language through a simple REST API</p>
+        </div>
+
+        <div class="sidebar-search">
+            <input type="text" id="search-input" placeholder="Search... (⌘K)" autocomplete="off" readonly>
+            <div id="search-results" class="search-results"></div>
+        </div>
+
+        <nav class="sidebar-nav">
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Getting Started</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="quickstart.html"
+                           class="nav-link active" aria-current="page">
+                            Getting Started with pi-sidecar
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">User Guides</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="sending-prompts.html"
+                           class="nav-link">
+                            Sending Prompts to AI Models
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="discovering-models.html"
+                           class="nav-link">
+                            Discovering and Selecting Models
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="managing-sessions.html"
+                           class="nav-link">
+                            Managing Session Lifecycle
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuring-tools.html"
+                           class="nav-link">
+                            Configuring Built-in and Custom Tools
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="running-parallel-tasks.html"
+                           class="nav-link">
+                            Running Parallel AI Calls
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="tracking-usage.html"
+                           class="nav-link">
+                            Tracking Token Usage and Costs
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="embedding-in-node.html"
+                           class="nav-link">
+                            Embedding the Sidecar in a Node.js Application
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuring-watchdog.html"
+                           class="nav-link">
+                            Monitoring a Companion Backend with the Watchdog
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Recipes</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="recipes-python-client.html"
+                           class="nav-link">
+                            Python Client Recipes
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="recipes-rest-api.html"
+                           class="nav-link">
+                            REST API Recipes
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Reference</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="rest-api-reference.html"
+                           class="nav-link">
+                            REST API Reference
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="python-client-reference.html"
+                           class="nav-link">
+                            Python Client API Reference
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuration-reference.html"
+                           class="nav-link">
+                            Configuration and Environment Variables
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="http-tool-executor-reference.html"
+                           class="nav-link">
+                            HTTP Tool Executor Reference
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+        </nav>
+    </aside>
+
+    <div class="main-wrapper">
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <a href="index.html" class="top-bar-title">pi-sidecar</a>
+            </div>
+            <div class="top-bar-spacer"></div>
+            <div class="top-bar-right">
+                <button class="top-bar-search-btn" id="search-trigger" aria-label="Search">
+                    <kbd>&#8984;K</kbd> Search
+                </button>
+                <a href="https://github.com/myk-org/docsfy" target="_blank" rel="noopener" class="docsfy-badge" title="Generated with docsfy">
+                    ⚡ docs<span class="brand-accent">fy</span>
+                </a>
+                
+                <a href="https://github.com/myk-org/pi-sidecar.git" target="_blank" rel="noopener noreferrer" class="top-bar-github" id="github-link" data-repo-url="https://github.com/myk-org/pi-sidecar.git">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    <span class="github-stars" id="github-stars" title="GitHub stars"></span>
+                </a>
+                
+                <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="content">
+            
+            <article class="article">
+                <div class="article-body">
+                    <!-- SECURITY: |safe is intentional. Content is AI-generated markdown
+                         converted to HTML server-side by the markdown library, not
+                         user-supplied input. XSS risk is minimal and accepted since
+                         the AI generates the content, not end users. -->
+                    <h1 id="getting-started-with-pi-sidecar">Getting Started with pi-sidecar</h1>
+<p>Get a local AI coding assistant running and make your first AI call from Python — install the sidecar server, start it, and send a prompt in three steps.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Node.js ≥ 22.19</strong> — the sidecar server is a Node.js application</li>
+<li><strong>Python ≥ 3.10</strong> — for the Python client library</li>
+<li><strong>An AI provider API key</strong> — e.g., <code>GOOGLE_API_KEY</code> for Gemini or <code>ANTHROPIC_API_KEY</code> for Claude</li>
+</ul>
+<h2 id="quick-example">Quick Example</h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># 1. Install and start the sidecar server</span>
+npm<span class="w"> </span>install<span class="w"> </span>@myk-org/pi-sidecar
+npm<span class="w"> </span>run<span class="w"> </span>build
+node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># 2. In a new terminal, install the Python client</span>
+pip<span class="w"> </span>install<span class="w"> </span>pi-sidecar-client
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># 3. Send your first prompt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+        <span class="s2">&quot;What are the three laws of robotics?&quot;</span><span class="p">,</span>
+        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+        <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;You are a helpful assistant. Be concise.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>That's it. The rest of this page walks through each step in detail.</p>
+<hr />
+<h2 id="step-1-install-the-sidecar-server">Step 1: Install the Sidecar Server</h2>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>@myk-org/pi-sidecar
+npm<span class="w"> </span>run<span class="w"> </span>build
+</code></pre></div>
+
+<p>This installs the server and its dependencies (including the Pi coding agent SDK and provider extensions), then compiles the TypeScript source.</p>
+<h2 id="step-2-set-up-your-api-key">Step 2: Set Up Your API Key</h2>
+<p>Export the credentials for your chosen AI provider before starting the server:</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Environment Variable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gemini</td>
+<td><code>GOOGLE_API_KEY</code></td>
+</tr>
+<tr>
+<td>Claude (API key)</td>
+<td><code>ANTHROPIC_API_KEY</code></td>
+</tr>
+<tr>
+<td>Claude (Vertex AI)</td>
+<td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">GOOGLE_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-api-key-here&quot;</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>Tip:</strong> For a full list of providers and their configuration, see <a href="configuration-reference.html">Configuration and Environment Variables</a>.</p>
+</blockquote>
+<h2 id="step-3-start-the-server">Step 3: Start the Server</h2>
+<div class="highlight"><pre><span></span><code>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<p>You'll see output like:</p>
+<div class="highlight"><pre><span></span><code>[sidecar] Pi SDK sidecar listening on http://127.0.0.1:9100
+</code></pre></div>
+
+<p>The server performs model discovery on startup. The <code>/health</code> endpoint returns <code>503</code> until discovery finishes, then <code>200</code> when ready.</p>
+<blockquote>
+<p><strong>Note:</strong> The sidecar binds to <code>127.0.0.1</code> (localhost only) by default. There is no authentication — security relies on the network boundary.</p>
+</blockquote>
+<h2 id="step-4-install-the-python-client">Step 4: Install the Python Client</h2>
+<p>In a separate terminal:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>pi-sidecar-client
+</code></pre></div>
+
+<h2 id="step-5-verify-the-connection">Step 5: Verify the Connection</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_sidecar_available</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">available</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="k">await</span> <span class="n">check_sidecar_available</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">available</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;✅ </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>If you see <code>✅ Sidecar is ready</code>, you're all set.</p>
+<h2 id="step-6-make-your-first-ai-call">Step 6: Make Your First AI Call</h2>
+<p>The simplest approach is <code>call_ai_once</code>, which creates a session, sends a prompt, and cleans up automatically:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+        <span class="s2">&quot;What are the three laws of robotics?&quot;</span><span class="p">,</span>
+        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+        <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;You are a helpful assistant. Be concise.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Tokens: in=</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">input_tokens</span><span class="si">}</span><span class="s2"> out=</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">output_tokens</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>The result includes <code>text</code> (the AI response), <code>usage</code> (token counts and cost), and <code>success</code> (whether the call succeeded).</p>
+<h2 id="whats-next">What's Next</h2>
+<p>Now that you have the sidecar running and can make AI calls, explore these guides:</p>
+<ul>
+<li><strong><a href="sending-prompts.html">Sending Prompts to AI Models</a></strong> — single-shot vs. multi-turn conversations</li>
+<li><strong><a href="discovering-models.html">Discovering and Selecting Models</a></strong> — see what models are available and filter by provider</li>
+<li><strong><a href="managing-sessions.html">Managing Session Lifecycle</a></strong> — create, reuse, and clean up sessions</li>
+<li><strong><a href="configuring-tools.html">Configuring Built-in and Custom Tools</a></strong> — control what tools the AI can use</li>
+<li><strong><a href="recipes-python-client.html">Python Client Recipes</a></strong> — copy-paste patterns for common workflows</li>
+</ul>
+<hr />
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="using-a-custom-port">Using a Custom Port</h3>
+<div class="highlight"><pre><span></span><code><span class="nv">SIDECAR_PORT</span><span class="o">=</span><span class="m">9200</span><span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<p>Tell the Python client where to find the server:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_URL</span><span class="o">=</span><span class="s2">&quot;http://127.0.0.1:9200&quot;</span>
+</code></pre></div>
+
+<p>Or pass the URL directly:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">SidecarClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">SidecarClient</span><span class="p">(</span><span class="s2">&quot;http://127.0.0.1:9200&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="friendly-provider-names">Friendly Provider Names</h3>
+<p>The Python client maps short provider names to their sidecar equivalents automatically:</p>
+<table>
+<thead>
+<tr>
+<th>You write</th>
+<th>Sidecar receives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gemini</code></td>
+<td><code>google</code></td>
+</tr>
+<tr>
+<td><code>claude</code></td>
+<td><code>google-vertex-claude</code></td>
+</tr>
+<tr>
+<td><code>cursor</code></td>
+<td><code>acpx-cursor</code></td>
+</tr>
+</tbody>
+</table>
+<p>You can use either form. The short names are more convenient for most workflows.</p>
+<h3 id="embedding-in-a-nodejs-application">Embedding in a Node.js Application</h3>
+<p>Instead of running the standalone server, you can start the sidecar programmatically:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">startSidecar</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;@myk-org/pi-sidecar&quot;</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">handle</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">startSidecar</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">port</span><span class="o">:</span><span class="w"> </span><span class="kt">9200</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">host</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+<span class="p">});</span>
+
+<span class="c1">// Later, shut down cleanly</span>
+<span class="k">await</span><span class="w"> </span><span class="nx">handle</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+</code></pre></div>
+
+<p>See <a href="embedding-in-node.html">Embedding the Sidecar in a Node.js Application</a> for the full guide.</p>
+<h3 id="enabling-debug-logs">Enabling Debug Logs</h3>
+<p>Both the server and client support configurable log levels via the <code>PI_SIDECAR_LOG_LEVEL</code> environment variable:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Server-side debug logging</span>
+<span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>debug<span class="w"> </span>node<span class="w"> </span>dist/server.js
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># Client-side debug logging</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>DEBUG
+</code></pre></div>
+
+<p>See <a href="configuration-reference.html">Configuration and Environment Variables</a> for all available settings.</p>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong>Health check returns <code>❌ Sidecar starting</code></strong></p>
+<p>Model discovery runs on startup and can take several seconds. Wait a moment and retry. If it persists, check the server terminal for errors — a missing API key is the most common cause.</p>
+<p><strong><code>Connection refused</code> errors from the Python client</strong></p>
+<p>Make sure the sidecar server is running and that <code>SIDECAR_URL</code> matches the port the server is listening on (default: <code>http://127.0.0.1:9100</code>).</p>
+<p><strong><code>Model 'X' not found for provider 'Y'</code></strong></p>
+<p>The model name or provider doesn't match any discovered model. Use <code>list_models()</code> to see what's available:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">list_models</span>
+
+<span class="n">models</span> <span class="o">=</span> <span class="k">await</span> <span class="n">list_models</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">models</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="p">[</span><span class="s1">&#39;provider&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">m</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>See <a href="discovering-models.html">Discovering and Selecting Models</a> for details on model discovery and provider filtering.</p>
+<h2 id="related-pages">Related Pages</h2>
+<ul>
+<li><a href="sending-prompts.html">Sending Prompts to AI Models</a></li>
+<li><a href="discovering-models.html">Discovering and Selecting Models</a></li>
+<li><a href="managing-sessions.html">Managing Session Lifecycle</a></li>
+<li><a href="configuration-reference.html">Configuration and Environment Variables</a></li>
+<li><a href="recipes-python-client.html">Python Client Recipes</a></li>
+</ul>
+                </div>
+            </article>
+            <nav class="page-nav">
+                
+                <div></div>
+                
+                
+                <a href="sending-prompts.html" class="page-nav-link page-nav-next">
+                    <span class="page-nav-label">Next</span>
+                    <span class="page-nav-title">Sending Prompts to AI Models</span>
+                </a>
+                
+            </nav>
+            
+            <aside class="toc-sidebar">
+                <div class="toc-container">
+                    <h3>On this page</h3>
+                    <div class="toc">
+<ul>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#quick-example">Quick Example</a></li>
+<li><a href="#step-1-install-the-sidecar-server">Step 1: Install the Sidecar Server</a></li>
+<li><a href="#step-2-set-up-your-api-key">Step 2: Set Up Your API Key</a></li>
+<li><a href="#step-3-start-the-server">Step 3: Start the Server</a></li>
+<li><a href="#step-4-install-the-python-client">Step 4: Install the Python Client</a></li>
+<li><a href="#step-5-verify-the-connection">Step 5: Verify the Connection</a></li>
+<li><a href="#step-6-make-your-first-ai-call">Step 6: Make Your First AI Call</a></li>
+<li><a href="#whats-next">What's Next</a></li>
+<li><a href="#advanced-usage">Advanced Usage</a><ul>
+<li><a href="#using-a-custom-port">Using a Custom Port</a></li>
+<li><a href="#friendly-provider-names">Friendly Provider Names</a></li>
+<li><a href="#embedding-in-a-nodejs-application">Embedding in a Node.js Application</a></li>
+<li><a href="#enabling-debug-logs">Enabling Debug Logs</a></li>
+</ul>
+</li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#related-pages">Related Pages</a></li>
+</ul>
+</div>
+
+                </div>
+            </aside>
+            
+
+        </main>
+
+        <footer class="page-footer">
+            
+            <span class="footer-version">Generated from version 1.1.5</span>
+            <span class="footer-sep">&middot;</span>
+            
+            Generated with <a href="https://github.com/myk-org/docsfy" target="_blank" rel="noopener">docs<span class="brand-accent">fy</span></a>
+            <span class="footer-sep">&middot;</span>
+            <span class="footer-llm">LLM-friendly: <a href="llms.txt">llms.txt</a> &middot; <a href="llms-full.txt">llms-full.txt</a></span>
+        </footer>
+    </div>
+
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <script src="assets/theme.js"></script>
+    <script src="assets/search.js"></script>
+    <script src="assets/copy.js"></script>
+    <script src="assets/callouts.js"></script>
+    <script src="assets/scrollspy.js"></script>
+    <script src="assets/codelabels.js"></script>
+    <script src="assets/github.js"></script>
+    <script>
+(function() {
+    var toggle = document.getElementById('sidebar-toggle');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebar-overlay');
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+            if (overlay) overlay.classList.toggle('open');
+            var expanded = sidebar.classList.contains('open');
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        });
+    }
+    if (overlay) {
+        overlay.addEventListener('click', function() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        });
+    }
+})();
+</script>
+<script>
+(function() {
+    var sidebar = document.querySelector('.sidebar-nav') || document.querySelector('.sidebar');
+    if (!sidebar) return;
+
+    // Restore scroll position
+    var saved = sessionStorage.getItem('sidebar-scroll');
+    if (saved) sidebar.scrollTop = parseInt(saved, 10);
+
+    // Save scroll position before navigating
+    sidebar.addEventListener('scroll', function() {
+        sessionStorage.setItem('sidebar-scroll', sidebar.scrollTop.toString());
+    });
+
+    // Also scroll active link into view if no saved position
+    if (!saved) {
+        var active = sidebar.querySelector('.nav-link.active');
+        if (active) {
+            active.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }
+    }
+})();
+</script>
+</body>
+</html>

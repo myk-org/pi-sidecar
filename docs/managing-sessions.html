@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Managing Session Lifecycle - pi-sidecar</title>
+    <meta name="description" content="Call AI coding agents from Python, shell, or any language through a simple REST API">
+    <link rel="stylesheet" href="assets/style.css">
+    <script>try{var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
+    <link rel="alternate" type="text/plain" title="LLM Documentation Index" href="llms.txt">
+    <link rel="alternate" type="text/plain" title="LLM Full Documentation" href="llms-full.txt">
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="index.html" class="sidebar-logo">pi-sidecar</a>
+            <p class="sidebar-tagline">Call AI coding agents from Python, shell, or any language through a simple REST API</p>
+        </div>
+
+        <div class="sidebar-search">
+            <input type="text" id="search-input" placeholder="Search... (⌘K)" autocomplete="off" readonly>
+            <div id="search-results" class="search-results"></div>
+        </div>
+
+        <nav class="sidebar-nav">
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Getting Started</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="quickstart.html"
+                           class="nav-link">
+                            Getting Started with pi-sidecar
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">User Guides</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="sending-prompts.html"
+                           class="nav-link">
+                            Sending Prompts to AI Models
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="discovering-models.html"
+                           class="nav-link">
+                            Discovering and Selecting Models
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="managing-sessions.html"
+                           class="nav-link active" aria-current="page">
+                            Managing Session Lifecycle
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuring-tools.html"
+                           class="nav-link">
+                            Configuring Built-in and Custom Tools
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="running-parallel-tasks.html"
+                           class="nav-link">
+                            Running Parallel AI Calls
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="tracking-usage.html"
+                           class="nav-link">
+                            Tracking Token Usage and Costs
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="embedding-in-node.html"
+                           class="nav-link">
+                            Embedding the Sidecar in a Node.js Application
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuring-watchdog.html"
+                           class="nav-link">
+                            Monitoring a Companion Backend with the Watchdog
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Recipes</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="recipes-python-client.html"
+                           class="nav-link">
+                            Python Client Recipes
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="recipes-rest-api.html"
+                           class="nav-link">
+                            REST API Recipes
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+            <div class="nav-group">
+                <h3 class="nav-group-title">Reference</h3>
+                <ul class="nav-group-pages">
+                    
+                    <li>
+                        <a href="rest-api-reference.html"
+                           class="nav-link">
+                            REST API Reference
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="python-client-reference.html"
+                           class="nav-link">
+                            Python Client API Reference
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="configuration-reference.html"
+                           class="nav-link">
+                            Configuration and Environment Variables
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="http-tool-executor-reference.html"
+                           class="nav-link">
+                            HTTP Tool Executor Reference
+                        </a>
+                    </li>
+                    
+                </ul>
+            </div>
+            
+        </nav>
+    </aside>
+
+    <div class="main-wrapper">
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <a href="index.html" class="top-bar-title">pi-sidecar</a>
+            </div>
+            <div class="top-bar-spacer"></div>
+            <div class="top-bar-right">
+                <button class="top-bar-search-btn" id="search-trigger" aria-label="Search">
+                    <kbd>&#8984;K</kbd> Search
+                </button>
+                <a href="https://github.com/myk-org/docsfy" target="_blank" rel="noopener" class="docsfy-badge" title="Generated with docsfy">
+                    ⚡ docs<span class="brand-accent">fy</span>
+                </a>
+                
+                <a href="https://github.com/myk-org/pi-sidecar.git" target="_blank" rel="noopener noreferrer" class="top-bar-github" id="github-link" data-repo-url="https://github.com/myk-org/pi-sidecar.git">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    <span class="github-stars" id="github-stars" title="GitHub stars"></span>
+                </a>
+                
+                <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="content">
+            
+            <article class="article">
+                <div class="article-body">
+                    <!-- SECURITY: |safe is intentional. Content is AI-generated markdown
+                         converted to HTML server-side by the markdown library, not
+                         user-supplied input. XSS risk is minimal and accepted since
+                         the AI generates the content, not end users. -->
+                    <p>Let me start by reading the knowledge graph and pages manifest, then explore the relevant source files.</p>
+<p>Now let me explore the key source files for session lifecycle management.</p>
+<p>Now let me look at the example files and test files for more usage patterns.</p>
+<p>Now let me look at the tests for additional session lifecycle details:</p>
+<p>Now let me check the health check example and usage tracking example:</p>
+<p>I now have a thorough understanding of the session lifecycle. Let me write the guide.</p>
+<h1 id="managing-session-lifecycle">Managing Session Lifecycle</h1>
+<p>Create, reuse, and clean up AI sessions to build single-shot prompts, multi-turn conversations, and parallel workflows with the pi-sidecar Python client.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>pi-sidecar server running (see <a href="quickstart.html">Getting Started with pi-sidecar</a>)</li>
+<li><code>pi-sidecar-client</code> Python package installed</li>
+<li>Python 3.10+</li>
+</ul>
+<h2 id="quick-example">Quick Example</h2>
+<p>The fastest way to make an AI call with automatic session cleanup:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+        <span class="s2">&quot;What are the three laws of robotics?&quot;</span><span class="p">,</span>
+        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+        <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;You are a helpful assistant. Be concise.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p><code>call_ai_once</code> creates a session, sends the prompt, deletes the session, and returns the result — all in one call. No cleanup needed.</p>
+<h2 id="choosing-between-call_ai_once-and-call_ai">Choosing Between <code>call_ai_once</code> and <code>call_ai</code></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>call_ai_once</code></th>
+<th><code>call_ai</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Use case</strong></td>
+<td>Single-shot prompts</td>
+<td>Multi-turn conversations</td>
+</tr>
+<tr>
+<td><strong>Session cleanup</strong></td>
+<td>Automatic</td>
+<td>You must delete manually</td>
+</tr>
+<tr>
+<td><strong>Returns <code>session_id</code></strong></td>
+<td><code>None</code> (cleared after cleanup)</td>
+<td>Session ID for reuse</td>
+</tr>
+<tr>
+<td><strong>Conversation context</strong></td>
+<td>Not preserved</td>
+<td>Preserved across prompts</td>
+</tr>
+<tr>
+<td><strong>When to use</strong></td>
+<td>Independent questions, parallel tasks</td>
+<td>Follow-up questions, iterative refinement</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Tip:</strong> Start with <code>call_ai_once</code>. Switch to <code>call_ai</code> only when you need conversation continuity.</p>
+</blockquote>
+<h2 id="single-shot-calls">Single-Shot Calls</h2>
+<p>Use <code>call_ai_once</code> when each prompt is independent and you don't need follow-up questions:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+    <span class="s2">&quot;Summarize the key features of Rust.&quot;</span><span class="p">,</span>
+    <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+    <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+    <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;Answer in exactly three bullet points.&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>The session is created and destroyed behind the scenes. If session deletion fails, <code>result.session_id</code> is preserved so you can retry cleanup.</p>
+<h2 id="multi-turn-conversations">Multi-Turn Conversations</h2>
+<p>For conversations where context matters, use <code>call_ai</code> and pass the <code>session_id</code> between calls:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai</span><span class="p">,</span> <span class="n">get_sidecar_client</span>
+
+<span class="n">session_id</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="c1"># First message — creates a new session</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai</span><span class="p">(</span>
+        <span class="s2">&quot;I&#39;m building a REST API in Python. What framework should I use?&quot;</span><span class="p">,</span>
+        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+        <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;You are a senior Python developer. Be concise.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">session_id</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">session_id</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># Follow-up — reuses the same session (conversation context preserved)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai</span><span class="p">(</span>
+            <span class="s2">&quot;Show me a minimal example with that framework.&quot;</span><span class="p">,</span>
+            <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+            <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+            <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">session_id</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">session_id</span>  <span class="c1"># Update in case of cleanup failure</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+<span class="k">finally</span><span class="p">:</span>
+    <span class="c1"># Always clean up when done</span>
+    <span class="k">if</span> <span class="n">session_id</span><span class="p">:</span>
+        <span class="n">client</span> <span class="o">=</span> <span class="n">get_sidecar_client</span><span class="p">()</span>
+        <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">delete_session</span><span class="p">(</span><span class="n">session_id</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Key steps:</p>
+<ol>
+<li><strong>First call</strong> — omit <code>session_id</code> to create a new session automatically.</li>
+<li><strong>Capture <code>session_id</code></strong> — grab it from <code>result.session_id</code> immediately (before checking success).</li>
+<li><strong>Follow-up calls</strong> — pass <code>session_id</code> to <code>call_ai</code> to continue the conversation.</li>
+<li><strong>Clean up</strong> — delete the session in a <code>finally</code> block.</li>
+</ol>
+<blockquote>
+<p><strong>Warning:</strong> Always delete sessions when done. Sessions that are not deleted consume server memory until the sidecar's automatic stale cleanup removes them (after 1 hour of inactivity).</p>
+</blockquote>
+<h2 id="session-cleanup-patterns">Session Cleanup Patterns</h2>
+<h3 id="using-tryfinally-recommended">Using <code>try/finally</code> (recommended)</h3>
+<p>Wrap your session work in <code>try/finally</code> to guarantee cleanup:</p>
+<div class="highlight"><pre><span></span><code><span class="n">session_id</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai</span><span class="p">(</span><span class="s2">&quot;Hello&quot;</span><span class="p">,</span> <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span> <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">)</span>
+    <span class="n">session_id</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">session_id</span>
+    <span class="c1"># ... more prompts using session_id ...</span>
+<span class="k">finally</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">session_id</span><span class="p">:</span>
+        <span class="n">client</span> <span class="o">=</span> <span class="n">get_sidecar_client</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">delete_session</span><span class="p">(</span><span class="n">session_id</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: failed to clean up session </span><span class="si">{</span><span class="n">session_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="automatic-cleanup-on-error">Automatic cleanup on error</h3>
+<p>When <code>call_ai</code> creates a new session and the prompt fails with an exception, it automatically deletes the session it created. You only need manual cleanup for sessions you explicitly reuse.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># If this fails, the session is auto-cleaned</span>
+<span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai</span><span class="p">(</span><span class="s2">&quot;Hello&quot;</span><span class="p">,</span> <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span> <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">)</span>
+
+<span class="c1"># If THIS fails, you must clean up session_id yourself</span>
+<span class="n">result2</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai</span><span class="p">(</span><span class="s2">&quot;Follow up&quot;</span><span class="p">,</span> <span class="n">session_id</span><span class="o">=</span><span class="n">result</span><span class="o">.</span><span class="n">session_id</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="closing-the-client">Closing the client</h3>
+<p>When your application shuts down, close the HTTP client to release connections:</p>
+<div class="highlight"><pre><span></span><code><span class="n">client</span> <span class="o">=</span> <span class="n">get_sidecar_client</span><span class="p">()</span>
+<span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</code></pre></div>
+
+<h2 id="aborting-an-in-progress-prompt">Aborting an In-Progress Prompt</h2>
+<p>If a prompt is taking too long, you can abort it from another task:</p>
+<div class="highlight"><pre><span></span><code><span class="n">client</span> <span class="o">=</span> <span class="n">get_sidecar_client</span><span class="p">()</span>
+
+<span class="c1"># Start a long-running prompt in one task</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">long_prompt</span><span class="p">(</span><span class="n">sid</span><span class="p">):</span>
+    <span class="k">return</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">sid</span><span class="p">,</span> <span class="s2">&quot;Analyze this large codebase...&quot;</span><span class="p">)</span>
+
+<span class="c1"># Abort from another task after a timeout</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">timeout_guard</span><span class="p">(</span><span class="n">sid</span><span class="p">,</span> <span class="n">seconds</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">seconds</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">abort</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>Note:</strong> A session can only handle one prompt at a time. Sending a second prompt to a busy session returns an error. Use <code>abort</code> first if you need to cancel and retry.</p>
+</blockquote>
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="using-the-sidecarclient-directly">Using the <code>SidecarClient</code> directly</h3>
+<p>For full control, use <code>SidecarClient</code> methods instead of the convenience functions:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">SidecarClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">SidecarClient</span><span class="p">(</span><span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;http://127.0.0.1:9100&quot;</span><span class="p">)</span>
+
+<span class="c1"># Create a session</span>
+<span class="n">session_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">create_session</span><span class="p">(</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+    <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;You are a code reviewer.&quot;</span><span class="p">,</span>
+    <span class="n">cwd</span><span class="o">=</span><span class="s2">&quot;/path/to/project&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Send prompts</span>
+<span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">session_id</span><span class="p">,</span> <span class="s2">&quot;Review this function for bugs.&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+
+<span class="c1"># Delete when done</span>
+<span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">delete_session</span><span class="p">(</span><span class="n">session_id</span><span class="p">)</span>
+<span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</code></pre></div>
+
+<h3 id="setting-a-prompt-timeout">Setting a prompt timeout</h3>
+<p>Both <code>call_ai</code> and <code>call_ai_once</code> accept <code>ai_call_timeout</code> in <strong>minutes</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+    <span class="s2">&quot;Analyze this large dataset...&quot;</span><span class="p">,</span>
+    <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+    <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+    <span class="n">ai_call_timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>  <span class="c1"># 5-minute timeout</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>For fine-grained control, <code>client.prompt()</code> accepts <code>timeout</code> in <strong>seconds</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">session_id</span><span class="p">,</span> <span class="s2">&quot;Quick question&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">30.0</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="resource-loading-via-cwd">Resource loading via <code>cwd</code></h3>
+<p>The <code>cwd</code> parameter controls which project resources the AI session loads. The Pi SDK looks for skills, prompts, extensions, and themes in <code>{cwd}/.pi/</code> and loads <code>AGENTS.md</code> from <code>{cwd}/</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+    <span class="s2">&quot;Explain this project&#39;s architecture.&quot;</span><span class="p">,</span>
+    <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+    <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+    <span class="n">cwd</span><span class="o">=</span><span class="s2">&quot;/home/user/my-project&quot;</span><span class="p">,</span>  <span class="c1"># Loads .pi/ resources from this directory</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>When <code>cwd</code> is omitted, it defaults to the system temp directory.</p>
+<h3 id="configuring-tools-on-a-session">Configuring tools on a session</h3>
+<p>Override or extend the default tool set (<code>read</code>, <code>grep</code>, <code>find</code>, <code>ls</code>, <code>bash</code>) when creating a session:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Restrict to read-only tools</span>
+<span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+    <span class="s2">&quot;Summarize this file.&quot;</span><span class="p">,</span>
+    <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+    <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;read&quot;</span><span class="p">,</span> <span class="s2">&quot;grep&quot;</span><span class="p">],</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>See <a href="configuring-tools.html">Configuring Built-in and Custom Tools</a> for custom tool setup and HTTP-backed tools.</p>
+<h3 id="stale-session-cleanup">Stale session cleanup</h3>
+<p>The sidecar automatically cleans up sessions that have been idle for over 1 hour. This runs every 10 minutes. Sessions with an active prompt (in-flight) are never cleaned up.</p>
+<p>You should still clean up sessions explicitly — don't rely on stale cleanup for normal operation.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Cause</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Session &lt;id&gt; not found</code></td>
+<td>Session was deleted or cleaned up by stale cleanup</td>
+<td>Create a new session — don't cache session IDs across long idle periods</td>
+</tr>
+<tr>
+<td><code>Session &lt;id&gt; is busy</code></td>
+<td>You sent a second prompt while one is still running</td>
+<td>Wait for the first prompt to complete, or <code>abort</code> it first</td>
+</tr>
+<tr>
+<td><code>call_ai_once</code> returns a <code>session_id</code></td>
+<td>Session deletion failed after the prompt</td>
+<td>Retry deletion with <code>client.delete_session(result.session_id)</code></td>
+</tr>
+<tr>
+<td><code>Sidecar unavailable</code></td>
+<td>Sidecar is not running or not yet ready</td>
+<td>Run <code>check_sidecar_available()</code> to check status; wait for model discovery to complete</td>
+</tr>
+<tr>
+<td>Timeout during prompt</td>
+<td>The AI call exceeded the default 600s timeout</td>
+<td>Set <code>ai_call_timeout</code> (minutes) or use <code>client.prompt(..., timeout=seconds)</code></td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="sending-prompts.html">Sending Prompts to AI Models</a> for details on prompt formatting and response handling. See <a href="tracking-usage.html">Tracking Token Usage and Costs</a> for recording usage after each call.</p>
+<h2 id="related-pages">Related Pages</h2>
+<ul>
+<li><a href="sending-prompts.html">Sending Prompts to AI Models</a></li>
+<li><a href="quickstart.html">Getting Started with pi-sidecar</a></li>
+<li><a href="configuring-tools.html">Configuring Built-in and Custom Tools</a></li>
+<li><a href="tracking-usage.html">Tracking Token Usage and Costs</a></li>
+<li><a href="rest-api-reference.html">REST API Reference</a></li>
+</ul>
+                </div>
+            </article>
+            <nav class="page-nav">
+                
+                <a href="discovering-models.html" class="page-nav-link page-nav-prev">
+                    <span class="page-nav-label">Previous</span>
+                    <span class="page-nav-title">Discovering and Selecting Models</span>
+                </a>
+                
+                
+                <a href="configuring-tools.html" class="page-nav-link page-nav-next">
+                    <span class="page-nav-label">Next</span>
+                    <span class="page-nav-title">Configuring Built-in and Custom Tools</span>
+                </a>
+                
+            </nav>
+            
+            <aside class="toc-sidebar">
+                <div class="toc-container">
+                    <h3>On this page</h3>
+                    <div class="toc">
+<ul>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#quick-example">Quick Example</a></li>
+<li><a href="#choosing-between-call_ai_once-and-call_ai">Choosing Between call_ai_once and call_ai</a></li>
+<li><a href="#single-shot-calls">Single-Shot Calls</a></li>
+<li><a href="#multi-turn-conversations">Multi-Turn Conversations</a></li>
+<li><a href="#session-cleanup-patterns">Session Cleanup Patterns</a><ul>
+<li><a href="#using-tryfinally-recommended">Using try/finally (recommended)</a></li>
+<li><a href="#automatic-cleanup-on-error">Automatic cleanup on error</a></li>
+<li><a href="#closing-the-client">Closing the client</a></li>
+</ul>
+</li>
+<li><a href="#aborting-an-in-progress-prompt">Aborting an In-Progress Prompt</a></li>
+<li><a href="#advanced-usage">Advanced Usage</a><ul>
+<li><a href="#using-the-sidecarclient-directly">Using the SidecarClient directly</a></li>
+<li><a href="#setting-a-prompt-timeout">Setting a prompt timeout</a></li>
+<li><a href="#resource-loading-via-cwd">Resource loading via cwd</a></li>
+<li><a href="#configuring-tools-on-a-session">Configuring tools on a session</a></li>
+<li><a href="#stale-session-cleanup">Stale session cleanup</a></li>
+</ul>
+</li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#related-pages">Related Pages</a></li>
+</ul>
+</div>
+
+                </div>
+            </aside>
+            
+
+        </main>
+
+        <footer class="page-footer">
+            
+            <span class="footer-version">Generated from version 1.1.5</span>
+            <span class="footer-sep">&middot;</span>
+            
+            Generated with <a href="https://github.com/myk-org/docsfy" target="_blank" rel="noopener">docs<span class="brand-accent">fy</span></a>
+            <span class="footer-sep">&middot;</span>
+            <span class="footer-llm">LLM-friendly: <a href="llms.txt">llms.txt</a> &middot; <a href="llms-full.txt">llms-full.txt</a></span>
+        </footer>
+    </div>
+
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <script src="assets/theme.js"></script>
+    <script src="assets/search.js"></script>
+    <script src="assets/copy.js"></script>
+    <script src="assets/callouts.js"></script>
+    <script src="assets/scrollspy.js"></script>
+    <script src="assets/codelabels.js"></script>
+    <script src="assets/github.js"></script>
+    <script>
+(function() {
+    var toggle = document.getElementById('sidebar-toggle');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebar-overlay');
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+            if (overlay) overlay.classList.toggle('open');
+            var expanded = sidebar.classList.contains('open');
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        });
+    }
+    if (overlay) {
+        overlay.addEventListener('click', function() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        });
+    }
+})();
+</script>
+<script>
+(function() {
+    var sidebar = document.querySelector('.sidebar-nav') || document.querySelector('.sidebar');
+    if (!sidebar) return;
+
+    // Restore scroll position
+    var saved = sessionStorage.getItem('sidebar-scroll');
+    if (saved) sidebar.scrollTop = parseInt(saved, 10);
+
+    // Save scroll position before navigating
+    sidebar.addEventListener('scroll', function() {
+        sessionStorage.setItem('sidebar-scroll', sidebar.scrollTop.toString());
+    });
+
+    // Also scroll active link into view if no saved position
+    if (!saved) {
+        var active = sidebar.querySelector('.nav-link.active');
+        if (active) {
+            active.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }
+    }
+})();
+</script>
+</body>
+</html>
