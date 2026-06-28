@@ -34,11 +34,46 @@ describe("message boundary separator", () => {
         }
       }
       if (!isJson) {
+        // Find JSON regions to protect from separator insertion
+        const jsonRegions: Array<[number, number]> = [];
+        for (let si = 0; si < responseText.length; si++) {
+          const ch = responseText.charCodeAt(si);
+          if (ch === 123 || ch === 91) {
+            const close = ch === 123 ? 125 : 93;
+            let depth = 1;
+            let inStr = false;
+            let esc = false;
+            let ei = si + 1;
+            for (; ei < responseText.length && depth > 0; ei++) {
+              const c = responseText.charCodeAt(ei);
+              if (esc) { esc = false; continue; }
+              if (c === 92) { esc = true; continue; }
+              if (c === 34) { inStr = !inStr; continue; }
+              if (inStr) continue;
+              if (c === ch) depth++;
+              else if (c === close) depth--;
+            }
+            if (depth === 0) {
+              const candidate = responseText.slice(si, ei);
+              try {
+                JSON.parse(candidate);
+                jsonRegions.push([si, ei]);
+                si = ei - 1;
+              } catch {
+                // Balanced but not valid JSON
+              }
+            }
+          }
+        }
+
         const parts: string[] = [];
         let prev = 0;
         for (const pos of messageBoundaries) {
-          parts.push(responseText.slice(prev, pos));
-          prev = pos;
+          const insideJson = jsonRegions.some(([start, end]) => pos > start && pos < end);
+          if (!insideJson) {
+            parts.push(responseText.slice(prev, pos));
+            prev = pos;
+          }
         }
         parts.push(responseText.slice(prev));
         responseText = parts.join("\n\n");
@@ -256,5 +291,91 @@ describe("message boundary separator", () => {
       { message: msgs[4], delta: "Five." },
     ]);
     assert.equal(result, "One.\n\nTwo.\n\nThree.\n\nFour.\n\nFive.");
+  });
+
+  // ===== PROSE + JSON (boundary must not corrupt JSON) =====
+
+  it("prose preamble then JSON — \\n\\n must not corrupt JSON content", () => {
+    const msg1 = {};
+    const msg2 = {};
+    const msg3 = {};
+    // AI reads files (msg1), writes preamble (msg2), then outputs JSON (msg3)
+    const result = concatenateDeltas([
+      { message: msg1, delta: "I'll explore the repo." },
+      { message: msg2, delta: 'Here is the plan: ' },
+      { message: msg3, delta: '{"project_name": "docsfy", "pages": ["overview"]}' },
+    ]);
+    // The JSON portion must remain parseable
+    const jsonMatch = result.match(/\{.*\}/s);
+    assert.ok(jsonMatch, "should contain a JSON object");
+    assert.doesNotThrow(() => JSON.parse(jsonMatch![0]), "JSON inside response must be valid");
+  });
+
+  it("prose + JSON with boundary mid-JSON-key — must not split key", () => {
+    const msg1 = {};
+    const msg2 = {};
+    // Boundary falls inside a JSON key: {"project_ | name": ...}
+    const result = concatenateDeltas([
+      { message: msg1, delta: '{"project_' },
+      { message: msg2, delta: 'name": "test"}' },
+    ]);
+    // This is pure JSON — must not be corrupted
+    assert.doesNotThrow(() => JSON.parse(result), "JSON must remain valid");
+    assert.ok(!result.includes('\n\n'), "no \\n\\n should be inside JSON");
+  });
+
+  it("multi-tool response: prose then JSON plan (docsfy scenario)", () => {
+    const msg1 = {};
+    const msg2 = {};
+    const msg3 = {};
+    const msg4 = {};
+    const jsonPlan = '{"project_name": "pi-sidecar", "navigation": [{"group": "Overview", "pages": [{"slug": "intro"}]}]}';
+    const result = concatenateDeltas([
+      { message: msg1, delta: "Let me analyze the codebase." },
+      { message: msg2, delta: "I've read the main files." },
+      { message: msg3, delta: "Here is the documentation plan:\n" },
+      { message: msg4, delta: jsonPlan },
+    ]);
+    // Extract JSON from the response and verify it's valid
+    const jsonMatch = result.match(/\{.*\}/s);
+    assert.ok(jsonMatch, "should contain JSON");
+    assert.doesNotThrow(() => JSON.parse(jsonMatch![0]), "JSON plan must be parseable");
+    // Verify the JSON content is intact
+    const parsed = JSON.parse(jsonMatch![0]);
+    assert.equal(parsed.project_name, "pi-sidecar");
+  });
+
+  it("boundary splits JSON key mid-word across messages (docsfy real bug)", () => {
+    // Real scenario: AI streams JSON across messages, boundary falls mid-token
+    // msg1 ends with '{"project_' and msg2 starts with 'name": "docsfy"}'
+    // With prose before JSON, the whole response doesn't start with { so
+    // looksLikeJson is false, and \n\n gets injected at the boundary
+    const msg1 = {};
+    const msg2 = {};
+    const msg3 = {};
+    const result = concatenateDeltas([
+      { message: msg1, delta: "Here is the plan: " },
+      { message: msg2, delta: '{"project_' },
+      { message: msg3, delta: 'name": "docsfy", "pages": ["overview"]}' },
+    ]);
+    // The JSON must NOT have \n\n injected inside it
+    const jsonMatch = result.match(/\{.*\}/s);
+    assert.ok(jsonMatch, "should contain JSON");
+    assert.doesNotThrow(() => JSON.parse(jsonMatch![0]),
+      `JSON must be valid, got: ${jsonMatch![0]}`);
+  });
+
+  it("boundary inside JSON value mid-word (corrupts string content)", () => {
+    // Boundary falls inside a JSON string value: "do | csfy"
+    const msg1 = {};
+    const msg2 = {};
+    const result = concatenateDeltas([
+      { message: msg1, delta: '{"name": "do' },
+      { message: msg2, delta: 'csfy"}' },
+    ]);
+    // Pure JSON — should not be corrupted
+    assert.doesNotThrow(() => JSON.parse(result), `JSON must be valid, got: ${result}`);
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.name, "docsfy", "value must not be split");
   });
 });

@@ -518,16 +518,55 @@ export class SessionStore {
         }
       }
       if (!isJson) {
-        // Single-pass boundary insertion using array join
+        // Find JSON regions in the response to protect them from separator insertion.
+        // A boundary that falls inside a {...} or [...] region is skipped.
+        const jsonRegions: Array<[number, number]> = [];
+        for (let si = 0; si < responseText.length; si++) {
+          const ch = responseText.charCodeAt(si);
+          if (ch === 123 /* { */ || ch === 91 /* [ */) {
+            const close = ch === 123 ? 125 : 93;
+            let depth = 1;
+            let inStr = false;
+            let esc = false;
+            let ei = si + 1;
+            for (; ei < responseText.length && depth > 0; ei++) {
+              const c = responseText.charCodeAt(ei);
+              if (esc) { esc = false; continue; }
+              if (c === 92 /* \\ */) { esc = true; continue; }
+              if (c === 34 /* \" */) { inStr = !inStr; continue; }
+              if (inStr) continue;
+              if (c === ch) depth++;
+              else if (c === close) depth--;
+            }
+            if (depth === 0) {
+              // Verify it's actually valid JSON before protecting it
+              const candidate = responseText.slice(si, ei);
+              try {
+                JSON.parse(candidate);
+                jsonRegions.push([si, ei]);
+                si = ei - 1; // skip past this region
+              } catch {
+                // Balanced braces but not valid JSON — don't protect
+              }
+            }
+          }
+        }
+
+        // Insert \n\n at boundaries that don't fall inside JSON regions
         const parts: string[] = [];
         let prev = 0;
+        let applied = 0;
         for (const pos of messageBoundaries) {
-          parts.push(responseText.slice(prev, pos));
-          prev = pos;
+          const insideJson = jsonRegions.some(([start, end]) => pos > start && pos < end);
+          if (!insideJson) {
+            parts.push(responseText.slice(prev, pos));
+            prev = pos;
+            applied++;
+          }
         }
         parts.push(responseText.slice(prev));
         responseText = parts.join("\n\n");
-        logger.debug(`[sidecar] MSG_BOUNDARIES_APPLIED: session=${id}, count=${messageBoundaries.length}`);
+        logger.debug(`[sidecar] MSG_BOUNDARIES_APPLIED: session=${id}, applied=${applied}, skipped=${messageBoundaries.length - applied}`);
       } else {
         logger.debug(`[sidecar] MSG_BOUNDARIES_SKIPPED: session=${id}, count=${messageBoundaries.length}, reason=json_response`);
       }
