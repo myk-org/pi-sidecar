@@ -504,19 +504,29 @@ export class SessionStore {
     // Insert \n\n at message boundaries for text responses only.
     // JSON responses must not be modified — the separator would corrupt structured data.
     if (messageBoundaries.length > 0 && responseText.length > 0) {
+      // Cheap pre-check: only attempt JSON.parse if response looks like JSON
+      const trimmed = responseText.trim();
+      const looksLikeJson = (trimmed.charCodeAt(0) === 123 /* { */ && trimmed.charCodeAt(trimmed.length - 1) === 125 /* } */) ||
+                            (trimmed.charCodeAt(0) === 91  /* [ */ && trimmed.charCodeAt(trimmed.length - 1) === 93  /* ] */);
       let isJson = false;
-      try {
-        JSON.parse(responseText);
-        isJson = true;
-      } catch {
-        // Not valid JSON — treat as text
+      if (looksLikeJson) {
+        try {
+          JSON.parse(responseText);
+          isJson = true;
+        } catch {
+          // Looks like JSON but isn't — treat as text
+        }
       }
       if (!isJson) {
-        // Insert \n\n at each boundary offset (reverse order to preserve positions)
-        for (let i = messageBoundaries.length - 1; i >= 0; i--) {
-          const pos = messageBoundaries[i];
-          responseText = responseText.slice(0, pos) + "\n\n" + responseText.slice(pos);
+        // Single-pass boundary insertion using array join
+        const parts: string[] = [];
+        let prev = 0;
+        for (const pos of messageBoundaries) {
+          parts.push(responseText.slice(prev, pos));
+          prev = pos;
         }
+        parts.push(responseText.slice(prev));
+        responseText = parts.join("\n\n");
         logger.debug(`[sidecar] MSG_BOUNDARIES_APPLIED: session=${id}, count=${messageBoundaries.length}`);
       } else {
         logger.debug(`[sidecar] MSG_BOUNDARIES_SKIPPED: session=${id}, count=${messageBoundaries.length}, reason=json_response`);

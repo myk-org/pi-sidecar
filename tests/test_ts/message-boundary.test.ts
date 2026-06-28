@@ -21,18 +21,27 @@ describe("message boundary separator", () => {
 
     // Post-process: insert \n\n only for non-JSON responses
     if (messageBoundaries.length > 0 && responseText.length > 0) {
+      const trimmed = responseText.trim();
+      const looksLikeJson = (trimmed.charCodeAt(0) === 123 && trimmed.charCodeAt(trimmed.length - 1) === 125) ||
+                            (trimmed.charCodeAt(0) === 91 && trimmed.charCodeAt(trimmed.length - 1) === 93);
       let isJson = false;
-      try {
-        JSON.parse(responseText);
-        isJson = true;
-      } catch {
-        // Not valid JSON
+      if (looksLikeJson) {
+        try {
+          JSON.parse(responseText);
+          isJson = true;
+        } catch {
+          // Not valid JSON
+        }
       }
       if (!isJson) {
-        for (let i = messageBoundaries.length - 1; i >= 0; i--) {
-          const pos = messageBoundaries[i];
-          responseText = responseText.slice(0, pos) + "\n\n" + responseText.slice(pos);
+        const parts: string[] = [];
+        let prev = 0;
+        for (const pos of messageBoundaries) {
+          parts.push(responseText.slice(prev, pos));
+          prev = pos;
         }
+        parts.push(responseText.slice(prev));
+        responseText = parts.join("\n\n");
       }
     }
     return responseText;
