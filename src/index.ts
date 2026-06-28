@@ -157,9 +157,10 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
                 sendJson(res, 400, { error: "agent_dir must be a directory" });
                 return;
               }
-            } catch {
-              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=does not exist`);
-              sendJson(res, 400, { error: "agent_dir does not exist" });
+            } catch (err: any) {
+              const reason = err?.code === "ENOENT" ? "does not exist" : err?.code === "EACCES" ? "permission denied" : `not accessible (${err?.code || "unknown"})`;
+              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=${reason}`);
+              sendJson(res, 400, { error: `agent_dir ${reason}` });
               return;
             }
           }

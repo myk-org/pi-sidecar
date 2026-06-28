@@ -2,9 +2,9 @@ import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
-
-import { isAbsolute } from "node:path";
-import { statSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
+import { statSync, mkdtempSync, writeFileSync, unlinkSync, rmdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import { DEFAULT_TOOLS } from "../../src/sessions.js";
 import { parseBody } from "../../src/index.js";
@@ -368,15 +368,16 @@ describe("POST /sessions agent_dir validation", () => {
     assert.throws(() => statSync("/tmp/nonexistent-agent-dir-that-does-not-exist-12345"), "non-existent path should throw");
   });
 
-  it("rejects agent_dir pointing to a file (not directory)", async () => {
-    const { writeFileSync, unlinkSync } = await import("node:fs");
-    const testFile = "/tmp/pi-sidecar-test-file-not-dir";
+  it("rejects agent_dir pointing to a file (not directory)", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "pi-sidecar-test-"));
+    const testFile = join(tempDir, "not-a-dir");
     writeFileSync(testFile, "test");
     try {
       const stat = statSync(testFile);
       assert.ok(!stat.isDirectory(), "file should not be a directory");
     } finally {
       unlinkSync(testFile);
+      rmdirSync(tempDir);
     }
   });
 });
