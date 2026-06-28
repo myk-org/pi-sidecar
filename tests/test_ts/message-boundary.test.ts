@@ -10,6 +10,8 @@ describe("message boundary separator", () => {
     let responseText = "";
     let lastAssistantMessage: object | null = null;
     const messageBoundaries: number[] = [];
+    // In tests, we use object identity to signal new messages (same as message_start in prod).
+    // Each distinct object = a new logical assistant message.
 
     for (const event of events) {
       if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
@@ -34,17 +36,15 @@ describe("message boundary separator", () => {
         }
       }
       if (!isJson) {
-        // Find JSON regions to protect from separator insertion
-        const jsonRegions: Array<[number, number]> = [];
-        for (let si = 0; si < responseText.length; si++) {
-          const ch = responseText.charCodeAt(si);
-          if (ch === 123 || ch === 91) {
+        function isInsideJson(pos: number): boolean {
+          for (let si = pos - 1; si >= 0; si--) {
+            const ch = responseText.charCodeAt(si);
+            if (ch !== 123 && ch !== 91) continue;
             const close = ch === 123 ? 125 : 93;
             let depth = 1;
             let inStr = false;
             let esc = false;
-            let ei = si + 1;
-            for (; ei < responseText.length && depth > 0; ei++) {
+            for (let ei = si + 1; ei < responseText.length && depth > 0; ei++) {
               const c = responseText.charCodeAt(ei);
               if (esc) { esc = false; continue; }
               if (c === 92) { esc = true; continue; }
@@ -52,25 +52,23 @@ describe("message boundary separator", () => {
               if (inStr) continue;
               if (c === ch) depth++;
               else if (c === close) depth--;
-            }
-            if (depth === 0) {
-              const candidate = responseText.slice(si, ei);
-              try {
-                JSON.parse(candidate);
-                jsonRegions.push([si, ei]);
-                si = ei - 1;
-              } catch {
-                // Balanced but not valid JSON
+              if (depth === 0 && ei + 1 > pos) {
+                try {
+                  JSON.parse(responseText.slice(si, ei + 1));
+                  return true;
+                } catch { /* not valid JSON */ }
+                break;
               }
             }
+            break;
           }
+          return false;
         }
 
         const parts: string[] = [];
         let prev = 0;
         for (const pos of messageBoundaries) {
-          const insideJson = jsonRegions.some(([start, end]) => pos > start && pos < end);
-          if (!insideJson) {
+          if (!isInsideJson(pos)) {
             parts.push(responseText.slice(prev, pos));
             prev = pos;
           }
