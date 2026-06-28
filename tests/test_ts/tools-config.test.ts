@@ -2,6 +2,9 @@ import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isAbsolute, join } from "node:path";
+import { statSync, mkdtempSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import { DEFAULT_TOOLS } from "../../src/sessions.js";
 import { parseBody } from "../../src/index.js";
@@ -312,5 +315,69 @@ describe("HTTP tool SDK-compatible assembly", () => {
     };
 
     assert.equal(result.content[0].text, "ok");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2c. POST /sessions agent_dir validation
+// ---------------------------------------------------------------------------
+
+describe("POST /sessions agent_dir validation", () => {
+  function createMockRequest(body: any): PassThrough {
+    const stream = new PassThrough();
+    stream.write(JSON.stringify(body));
+    stream.end();
+    return stream;
+  }
+
+  it("rejects non-string agent_dir", async () => {
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test", agent_dir: 123 };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = parsed.agent_dir !== undefined &&
+      (typeof parsed.agent_dir !== "string" || String(parsed.agent_dir).trim().length === 0);
+    assert.ok(isInvalid, "non-string agent_dir should be rejected");
+  });
+
+  it("rejects empty string agent_dir", async () => {
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test", agent_dir: "" };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const isInvalid = typeof parsed.agent_dir === "string" && parsed.agent_dir.trim().length === 0;
+    assert.ok(isInvalid, "empty string agent_dir should be rejected");
+  });
+
+  it("rejects relative path agent_dir", () => {
+    assert.ok(!isAbsolute("relative/path"), "relative path should not be absolute");
+    assert.ok(!isAbsolute("./relative"), "dot-relative path should not be absolute");
+  });
+
+  it("accepts valid absolute path agent_dir", () => {
+    assert.ok(isAbsolute("/tmp/test-agent"), "absolute path should be recognized");
+    assert.ok(isAbsolute("/home/user/.pi/agent"), "home absolute path should be recognized");
+  });
+
+  it("accepts request without agent_dir", async () => {
+    const body = { provider: "google", model: "gemini-2.5-flash", system_prompt: "test" };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    assert.equal(parsed.agent_dir, undefined, "agent_dir should be undefined when not provided");
+  });
+
+  it("rejects agent_dir pointing to a non-existent path", () => {
+    assert.throws(() => statSync("/tmp/nonexistent-agent-dir-that-does-not-exist-12345"), "non-existent path should throw");
+  });
+
+  it("rejects agent_dir pointing to a file (not directory)", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "pi-sidecar-test-"));
+    try {
+      const testFile = join(tempDir, "not-a-dir");
+      writeFileSync(testFile, "test");
+      const stat = statSync(testFile);
+      assert.ok(!stat.isDirectory(), "file should not be a directory");
+      unlinkSync(testFile);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

@@ -158,18 +158,28 @@ class SidecarClient:
         model: str,
         system_prompt: str,
         cwd: str = DEFAULT_CWD,
+        agent_dir: str | None = None,
         custom_tools: list | None = None,
         tools: list[str] | None = None,
     ) -> str:
-        """Create a new AI session. Returns session_id."""
+        """Create a new AI session. Returns session_id.
+
+        The ``cwd`` parameter also controls project-level resource loading —
+        the Pi SDK automatically discovers skills, prompts, extensions, and themes
+        from ``{cwd}/.pi/`` and loads ``AGENTS.md`` from ``{cwd}/``.
+
+        The ``agent_dir`` parameter points to the global agent directory for
+        user-level skills, extensions, auth, and model configs (e.g., ``~/.pi/agent/``).
+        """
         sidecar_provider, sidecar_model = _map_provider_model(provider, model)
         logger.debug(
-            "Creating session: provider=%s→%s, model=%s→%s, cwd=%s, custom_tools=%d, tools=%s",
+            "Creating session: provider=%s→%s, model=%s→%s, cwd=%s, agent_dir=%s, custom_tools=%d, tools=%s",
             provider,
             sidecar_provider,
             model,
             sidecar_model,
             cwd,
+            agent_dir,
             len(custom_tools or []),
             tools,
         )
@@ -179,6 +189,8 @@ class SidecarClient:
             "system_prompt": system_prompt,
             "cwd": cwd,
         }
+        if agent_dir:
+            body["agent_dir"] = agent_dir
         if custom_tools:
             body["custom_tools"] = custom_tools
         if tools is not None:
@@ -293,6 +305,7 @@ async def call_ai(
     ai_provider: str = "",
     ai_model: str = "",
     cwd: str | None = None,
+    agent_dir: str | None = None,
     system_prompt: str = "",
     ai_call_timeout: int | None = None,
     session_id: str | None = None,
@@ -304,6 +317,10 @@ async def call_ai(
     Creates a new session (or reuses *session_id*), sends the prompt,
     and returns the result with session_id attached.
 
+    The ``cwd`` parameter also controls project-level resource loading —
+    the Pi SDK automatically discovers skills, prompts, extensions, and themes
+    from ``{cwd}/.pi/`` and loads ``AGENTS.md`` from ``{cwd}/``.
+
     Session lifecycle:
     - Caller is responsible for deleting sessions when done.
     - For single-shot calls, use ``call_ai_once(...)``
@@ -312,11 +329,12 @@ async def call_ai(
       previous result to continue the conversation.
     """
     logger.debug(
-        "call_ai: provider=%s, model=%s, session_id=%s, prompt_length=%d, tools=%s",
+        "call_ai: provider=%s, model=%s, session_id=%s, prompt_length=%d, agent_dir=%s, tools=%s",
         ai_provider,
         ai_model,
         session_id or "new",
         len(prompt),
+        agent_dir,
         tools,
     )
     client = get_sidecar_client()
@@ -328,6 +346,7 @@ async def call_ai(
                 model=ai_model,
                 system_prompt=system_prompt or "You are a helpful assistant.",
                 cwd=cwd or DEFAULT_CWD,
+                agent_dir=agent_dir,
                 custom_tools=custom_tools,
                 tools=tools,
             )
@@ -367,6 +386,7 @@ async def call_ai_once(
     ai_provider: str = "",
     ai_model: str = "",
     cwd: str | None = None,
+    agent_dir: str | None = None,
     system_prompt: str = "",
     ai_call_timeout: int | None = None,
     custom_tools: list | None = None,
@@ -380,13 +400,19 @@ async def call_ai_once(
     Use ``call_ai`` directly for multi-turn conversations.
     """
     logger.debug(
-        "call_ai_once: provider=%s, model=%s, prompt_length=%d, tools=%s", ai_provider, ai_model, len(prompt), tools
+        "call_ai_once: provider=%s, model=%s, prompt_length=%d, agent_dir=%s, tools=%s",
+        ai_provider,
+        ai_model,
+        len(prompt),
+        agent_dir,
+        tools,
     )
     result = await call_ai(
         prompt,
         ai_provider=ai_provider,
         ai_model=ai_model,
         cwd=cwd,
+        agent_dir=agent_dir,
         system_prompt=system_prompt,
         ai_call_timeout=ai_call_timeout,
         custom_tools=custom_tools,
