@@ -370,14 +370,14 @@ describe("POST /sessions agent_dir validation", () => {
 
   it("rejects agent_dir pointing to a file (not directory)", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "pi-sidecar-test-"));
-    const testFile = join(tempDir, "not-a-dir");
-    writeFileSync(testFile, "test");
     try {
+      const testFile = join(tempDir, "not-a-dir");
+      writeFileSync(testFile, "test");
       const stat = statSync(testFile);
       assert.ok(!stat.isDirectory(), "file should not be a directory");
-    } finally {
       unlinkSync(testFile);
-      rmdirSync(tempDir);
+    } finally {
+      rmdirSync(tempDir, { recursive: true });
     }
   });
 });
