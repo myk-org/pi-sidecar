@@ -404,7 +404,7 @@ export class SessionStore {
     let errorsDropped = 0;
     let responseText = "";
     let textDeltaCount = 0;
-    let lastAssistantMessage: object | null = null;
+    let assistantMessageCount = 0;
     let messageBoundaries: number[] = [];
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: null as number | null, duration_ms: 0 };
     const startTime = Date.now();
@@ -432,12 +432,21 @@ export class SessionStore {
         }
         logger.error(`[sidecar] Prompt error event: session=${id}, error=${errorMsg}`);
       }
-      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-        if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
-          messageBoundaries.push(responseText.length);
-          logger.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
+      // Track assistant message boundaries via message_start events.
+      // Using message_start instead of object reference comparison because some
+      // providers (e.g., Vertex Claude) create new message objects per streaming chunk.
+      if (event.type === "message_start" && (event as any).message?.role === "assistant") {
+        assistantMessageCount++;
+        if (assistantMessageCount > 1 && responseText.length > 0) {
+          // Deduplicate: skip if same offset as last boundary (tool-only messages produce no text)
+          const lastBoundary = messageBoundaries.length > 0 ? messageBoundaries[messageBoundaries.length - 1] : -1;
+          if (responseText.length !== lastBoundary) {
+            messageBoundaries.push(responseText.length);
+            logger.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
+          }
         }
-        lastAssistantMessage = event.message;
+      }
+      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         responseText += event.assistantMessageEvent.delta;
         textDeltaCount++;
       }
@@ -518,16 +527,64 @@ export class SessionStore {
         }
       }
       if (!isJson) {
-        // Single-pass boundary insertion using array join
+        // Find JSON regions by scanning forward once. Only check openers at top level
+        // (not inside strings) and validate balanced regions with JSON.parse.
+        const jsonRegions: Array<[number, number]> = [];
+        let inStr = false;
+        let esc = false;
+        for (let si = 0; si < responseText.length; si++) {
+          const c = responseText.charCodeAt(si);
+          if (esc) { esc = false; continue; }
+          if (c === 92 /* \\ */) { esc = true; continue; }
+          if (c === 34 /* \" */) { inStr = !inStr; continue; }
+          if (inStr) continue;
+          if (c === 123 /* { */ || c === 91 /* [ */) {
+            const close = c === 123 ? 125 : 93;
+            let depth = 1;
+            let s2 = false, e2 = false;
+            let ei = si + 1;
+            for (; ei < responseText.length && depth > 0; ei++) {
+              const ch = responseText.charCodeAt(ei);
+              if (e2) { e2 = false; continue; }
+              if (ch === 92) { e2 = true; continue; }
+              if (ch === 34) { s2 = !s2; continue; }
+              if (s2) continue;
+              if (ch === c) depth++;
+              else if (ch === close) depth--;
+            }
+            if (depth === 0) {
+              // Only protect if a boundary actually falls inside this region
+              const hasRelevantBoundary = messageBoundaries.some(b => b > si && b < ei);
+              if (hasRelevantBoundary) {
+                try {
+                  JSON.parse(responseText.slice(si, ei));
+                  jsonRegions.push([si, ei]);
+                  si = ei - 1; // skip past valid JSON region only
+                } catch {
+                  // Balanced but not valid JSON — don't skip, inner regions may be valid
+                }
+              } else {
+                si = ei - 1; // no boundaries inside, safe to skip
+              }
+            }
+          }
+        }
+
+        // Insert \n\n at boundaries that don't fall inside JSON regions
         const parts: string[] = [];
         let prev = 0;
+        let applied = 0;
         for (const pos of messageBoundaries) {
-          parts.push(responseText.slice(prev, pos));
-          prev = pos;
+          const insideJson = jsonRegions.some(([start, end]) => pos > start && pos < end);
+          if (!insideJson) {
+            parts.push(responseText.slice(prev, pos));
+            prev = pos;
+            applied++;
+          }
         }
         parts.push(responseText.slice(prev));
         responseText = parts.join("\n\n");
-        logger.debug(`[sidecar] MSG_BOUNDARIES_APPLIED: session=${id}, count=${messageBoundaries.length}`);
+        logger.debug(`[sidecar] MSG_BOUNDARIES_APPLIED: session=${id}, applied=${applied}, skipped=${messageBoundaries.length - applied}`);
       } else {
         logger.debug(`[sidecar] MSG_BOUNDARIES_SKIPPED: session=${id}, count=${messageBoundaries.length}, reason=json_response`);
       }

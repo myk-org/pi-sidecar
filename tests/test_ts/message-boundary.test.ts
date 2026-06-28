@@ -10,10 +10,15 @@ describe("message boundary separator", () => {
     let responseText = "";
     let lastAssistantMessage: object | null = null;
     const messageBoundaries: number[] = [];
+    // In tests, we use object identity to signal new messages (same as message_start in prod).
+    // Each distinct object = a new logical assistant message.
 
     for (const event of events) {
       if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
-        messageBoundaries.push(responseText.length);
+        const lastBoundary = messageBoundaries.length > 0 ? messageBoundaries[messageBoundaries.length - 1] : -1;
+        if (responseText.length !== lastBoundary) {
+          messageBoundaries.push(responseText.length);
+        }
       }
       lastAssistantMessage = event.message;
       responseText += event.delta;
@@ -34,11 +39,53 @@ describe("message boundary separator", () => {
         }
       }
       if (!isJson) {
+        // Find JSON regions (forward scan, skip strings)
+        const jsonRegions: Array<[number, number]> = [];
+        let inStr2 = false, esc2 = false;
+        for (let si = 0; si < responseText.length; si++) {
+          const c = responseText.charCodeAt(si);
+          if (esc2) { esc2 = false; continue; }
+          if (c === 92) { esc2 = true; continue; }
+          if (c === 34) { inStr2 = !inStr2; continue; }
+          if (inStr2) continue;
+          if (c === 123 || c === 91) {
+            const close = c === 123 ? 125 : 93;
+            let depth = 1, s2 = false, e2 = false;
+            let ei = si + 1;
+            for (; ei < responseText.length && depth > 0; ei++) {
+              const ch = responseText.charCodeAt(ei);
+              if (e2) { e2 = false; continue; }
+              if (ch === 92) { e2 = true; continue; }
+              if (ch === 34) { s2 = !s2; continue; }
+              if (s2) continue;
+              if (ch === c) depth++;
+              else if (ch === close) depth--;
+            }
+            if (depth === 0) {
+              const hasB = messageBoundaries.some(b => b > si && b < ei);
+              if (hasB) {
+                try {
+                  JSON.parse(responseText.slice(si, ei));
+                  jsonRegions.push([si, ei]);
+                  si = ei - 1;
+                } catch {
+                  // Not valid JSON — don't skip, inner regions may be valid
+                }
+              } else {
+                si = ei - 1;
+              }
+            }
+          }
+        }
+
         const parts: string[] = [];
         let prev = 0;
         for (const pos of messageBoundaries) {
-          parts.push(responseText.slice(prev, pos));
-          prev = pos;
+          const inside = jsonRegions.some(([s, e]) => pos > s && pos < e);
+          if (!inside) {
+            parts.push(responseText.slice(prev, pos));
+            prev = pos;
+          }
         }
         parts.push(responseText.slice(prev));
         responseText = parts.join("\n\n");
@@ -256,5 +303,91 @@ describe("message boundary separator", () => {
       { message: msgs[4], delta: "Five." },
     ]);
     assert.equal(result, "One.\n\nTwo.\n\nThree.\n\nFour.\n\nFive.");
+  });
+
+  // ===== PROSE + JSON (boundary must not corrupt JSON) =====
+
+  it("prose preamble then JSON — \\n\\n must not corrupt JSON content", () => {
+    const msg1 = {};
+    const msg2 = {};
+    const msg3 = {};
+    // AI reads files (msg1), writes preamble (msg2), then outputs JSON (msg3)
+    const result = concatenateDeltas([
+      { message: msg1, delta: "I'll explore the repo." },
+      { message: msg2, delta: 'Here is the plan: ' },
+      { message: msg3, delta: '{"project_name": "docsfy", "pages": ["overview"]}' },
+    ]);
+    // The JSON portion must remain parseable
+    const jsonMatch = result.match(/\{.*\}/s);
+    assert.ok(jsonMatch, "should contain a JSON object");
+    assert.doesNotThrow(() => JSON.parse(jsonMatch![0]), "JSON inside response must be valid");
+  });
+
+  it("prose + JSON with boundary mid-JSON-key — must not split key", () => {
+    const msg1 = {};
+    const msg2 = {};
+    // Boundary falls inside a JSON key: {"project_ | name": ...}
+    const result = concatenateDeltas([
+      { message: msg1, delta: '{"project_' },
+      { message: msg2, delta: 'name": "test"}' },
+    ]);
+    // This is pure JSON — must not be corrupted
+    assert.doesNotThrow(() => JSON.parse(result), "JSON must remain valid");
+    assert.ok(!result.includes('\n\n'), "no \\n\\n should be inside JSON");
+  });
+
+  it("multi-tool response: prose then JSON plan (docsfy scenario)", () => {
+    const msg1 = {};
+    const msg2 = {};
+    const msg3 = {};
+    const msg4 = {};
+    const jsonPlan = '{"project_name": "pi-sidecar", "navigation": [{"group": "Overview", "pages": [{"slug": "intro"}]}]}';
+    const result = concatenateDeltas([
+      { message: msg1, delta: "Let me analyze the codebase." },
+      { message: msg2, delta: "I've read the main files." },
+      { message: msg3, delta: "Here is the documentation plan:\n" },
+      { message: msg4, delta: jsonPlan },
+    ]);
+    // Extract JSON from the response and verify it's valid
+    const jsonMatch = result.match(/\{.*\}/s);
+    assert.ok(jsonMatch, "should contain JSON");
+    assert.doesNotThrow(() => JSON.parse(jsonMatch![0]), "JSON plan must be parseable");
+    // Verify the JSON content is intact
+    const parsed = JSON.parse(jsonMatch![0]);
+    assert.equal(parsed.project_name, "pi-sidecar");
+  });
+
+  it("boundary splits JSON key mid-word across messages (docsfy real bug)", () => {
+    // Real scenario: AI streams JSON across messages, boundary falls mid-token
+    // msg1 ends with '{"project_' and msg2 starts with 'name": "docsfy"}'
+    // With prose before JSON, the whole response doesn't start with { so
+    // looksLikeJson is false, and \n\n gets injected at the boundary
+    const msg1 = {};
+    const msg2 = {};
+    const msg3 = {};
+    const result = concatenateDeltas([
+      { message: msg1, delta: "Here is the plan: " },
+      { message: msg2, delta: '{"project_' },
+      { message: msg3, delta: 'name": "docsfy", "pages": ["overview"]}' },
+    ]);
+    // The JSON must NOT have \n\n injected inside it
+    const jsonMatch = result.match(/\{.*\}/s);
+    assert.ok(jsonMatch, "should contain JSON");
+    assert.doesNotThrow(() => JSON.parse(jsonMatch![0]),
+      `JSON must be valid, got: ${jsonMatch![0]}`);
+  });
+
+  it("boundary inside JSON value mid-word (corrupts string content)", () => {
+    // Boundary falls inside a JSON string value: "do | csfy"
+    const msg1 = {};
+    const msg2 = {};
+    const result = concatenateDeltas([
+      { message: msg1, delta: '{"name": "do' },
+      { message: msg2, delta: 'csfy"}' },
+    ]);
+    // Pure JSON — should not be corrupted
+    assert.doesNotThrow(() => JSON.parse(result), `JSON must be valid, got: ${result}`);
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.name, "docsfy", "value must not be split");
   });
 });
