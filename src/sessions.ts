@@ -405,6 +405,7 @@ export class SessionStore {
     let responseText = "";
     let textDeltaCount = 0;
     let lastAssistantMessage: object | null = null;
+    let messageBoundaries: number[] = [];
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: null as number | null, duration_ms: 0 };
     const startTime = Date.now();
 
@@ -433,7 +434,7 @@ export class SessionStore {
       }
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
-          responseText += "\n\n";
+          messageBoundaries.push(responseText.length);
           logger.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
         }
         lastAssistantMessage = event.message;
@@ -500,8 +501,40 @@ export class SessionStore {
       entry.lastActivity = Date.now();
     }
 
+    // Insert \n\n at message boundaries for text responses only.
+    // JSON responses must not be modified — the separator would corrupt structured data.
+    if (messageBoundaries.length > 0 && responseText.length > 0) {
+      // Cheap pre-check: only attempt JSON.parse if response looks like JSON
+      const trimmed = responseText.trim();
+      const looksLikeJson = (trimmed.charCodeAt(0) === 123 /* { */ && trimmed.charCodeAt(trimmed.length - 1) === 125 /* } */) ||
+                            (trimmed.charCodeAt(0) === 91  /* [ */ && trimmed.charCodeAt(trimmed.length - 1) === 93  /* ] */);
+      let isJson = false;
+      if (looksLikeJson) {
+        try {
+          JSON.parse(responseText);
+          isJson = true;
+        } catch {
+          // Looks like JSON but isn't — treat as text
+        }
+      }
+      if (!isJson) {
+        // Single-pass boundary insertion using array join
+        const parts: string[] = [];
+        let prev = 0;
+        for (const pos of messageBoundaries) {
+          parts.push(responseText.slice(prev, pos));
+          prev = pos;
+        }
+        parts.push(responseText.slice(prev));
+        responseText = parts.join("\n\n");
+        logger.debug(`[sidecar] MSG_BOUNDARIES_APPLIED: session=${id}, count=${messageBoundaries.length}`);
+      } else {
+        logger.debug(`[sidecar] MSG_BOUNDARIES_SKIPPED: session=${id}, count=${messageBoundaries.length}, reason=json_response`);
+      }
+    }
+
     usage.duration_ms = Date.now() - startTime;
-    logger.log(`[sidecar] Prompt completed: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration=${usage.duration_ms}ms`);
+    logger.log(`[sidecar] PROMPT_COMPLETED: session=${id}, text_length=${responseText.length}, deltas=${textDeltaCount}, tokens_in=${usage.input_tokens}, tokens_out=${usage.output_tokens}, duration_ms=${usage.duration_ms}`);
 
     // If we got errors from the AI, surface them
     if (errors.length > 0) {
