@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, join } from "node:path";
-import { statSync, mkdtempSync, writeFileSync, unlinkSync, rmdirSync } from "node:fs";
+import { statSync, mkdtempSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 import { DEFAULT_TOOLS } from "../../src/sessions.js";
@@ -377,7 +377,7 @@ describe("POST /sessions agent_dir validation", () => {
       assert.ok(!stat.isDirectory(), "file should not be a directory");
       unlinkSync(testFile);
     } finally {
-      rmdirSync(tempDir, { recursive: true });
+      rmSync(tempDir, { recursive: true, force: true });
     }
   });
 });
