@@ -427,7 +427,7 @@ export class SessionStore {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         if (lastAssistantMessage !== null && event.message !== lastAssistantMessage && responseText.length > 0) {
           responseText += "\n\n";
-          logger.debug(`[sidecar] Message boundary: session=${id}, inserting separator after ${textDeltaCount} deltas`);
+          console.debug(`[sidecar] MSG_BOUNDARY: session=${id}, deltas=${textDeltaCount}`);
         }
         lastAssistantMessage = event.message;
         responseText += event.assistantMessageEvent.delta;
