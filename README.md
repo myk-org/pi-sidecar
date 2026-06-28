@@ -2,6 +2,8 @@
 
 A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), exposing AI sessions over a simple JSON API. Ships with a Python client for easy integration.
 
+📖 **[Full Documentation](https://myk-org.github.io/pi-sidecar/)**
+
 ## Packages
 
 | Package | Language | Install |
@@ -9,145 +11,7 @@ A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs
 | `@myk-org/pi-sidecar` | TypeScript | `npm install @myk-org/pi-sidecar` |
 | `pi-sidecar-client` | Python ≥ 3.10 | `uv pip install pi-sidecar-client` |
 
-## Provider Support
-
-| Provider | Sidecar name | Required env vars / config |
-|----------|-------------|---------------------------|
-| Gemini | `google` | `GOOGLE_API_KEY` or Application Default Credentials |
-| Claude (Vertex AI) | `google-vertex-claude` | `GOOGLE_APPLICATION_CREDENTIALS`, Vertex extension (`SIDECAR_VERTEX_EXTENSION_PATH`) |
-| Claude (API key) | `anthropic` | `ANTHROPIC_API_KEY` |
-| Cursor (via acpx) | `acpx-cursor` | `ACPX_AGENTS=cursor`, acpx CLI on `$PATH`, ACPX extension (`SIDECAR_ACPX_EXTENSION_PATH`) |
-
-> **Note:** The Python client accepts friendly provider names (`gemini`, `claude`, `cursor`) and maps them internally to sidecar provider names (`google`, `google-vertex-claude`, `acpx-cursor`).
-
-## HTTP API
-
-All endpoints accept/return JSON. Default base URL: `http://127.0.0.1:9100`.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Returns `{"status":"ok","sessions":N}`. 503 while model discovery is in progress. |
-| `GET` | `/models` | List all discovered models. |
-| `POST` | `/models/refresh` | Re-run model discovery and return updated list. |
-| `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, agent_dir?, tools?, custom_tools?}` → `{session_id}`. See [Project Resources](#project-resources) for `cwd` and `agent_dir`. |
-| `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage, error?}` |
-| `POST` | `/sessions/:id/abort` | Abort an in-progress prompt. |
-| `DELETE` | `/sessions/:id` | Delete a session and free resources. |
-
-> **`POST /sessions` — `tools` parameter:**
->
-> Optional array of builtin tool names to enable for the session. Defaults to `["read", "grep", "find", "ls", "bash"]`. Pass a subset to restrict available tools (e.g. `["read"]` for read-only sessions).
-
-> **`POST /sessions` — HTTP-backed custom tools:**
->
-> Custom tools can include an `http` property to delegate execution to an HTTP endpoint. The sidecar interpolates `{paramName}` placeholders in the URL, headers, query params, and body template with the tool's runtime parameters.
->
-> ```json
-> {
->   "custom_tools": [{
->     "name": "lookup_user",
->     "description": "Look up a user by ID",
->     "parameters": { "type": "object", "properties": { "userId": { "type": "string" } } },
->     "http": {
->       "method": "GET",
->       "url": "https://api.example.com/users/{userId}",
->       "headers": { "Authorization": "Bearer {token}" },
->       "query_params": { "fields": "name,email" },
->       "timeoutMs": 10000
->     }
->   }]
-> }
-> ```
->
-> Security: URL path parameters are URI-encoded, header values are stripped of CR/LF, object body template values are JSON-escaped, requests have a 30s default timeout, and responses are limited to 1MB.
-
-> **`POST /sessions/:id/prompt` — error field:**
->
-> The response includes an optional `error` string field, present when the AI returned errors during processing. When `error` is set, `text` may still contain partial output. Python client callers: when `error` is present, `AIResult.success` will be `False`.
-
-## Project Resources
-
-The Pi SDK automatically loads project-level resources from the `cwd` directory passed to `POST /sessions`:
-
-```text
-{cwd}/
-├── AGENTS.md                  # Project agent instructions (injected into system prompt)
-└── .pi/
-    ├── skills/                # Project skills (each in its own directory with SKILL.md)
-    │   └── my-skill/
-    │       └── SKILL.md
-    ├── prompts/               # Prompt templates
-    ├── extensions/            # Project extensions
-    └── themes/                # UI themes
-```
-
-This means callers can customize AI behavior per-project without any sidecar code changes — just set `cwd` to a directory containing these files.
-
-### Global Agent Directory (`agent_dir`)
-
-The optional `agent_dir` parameter in `POST /sessions` points to a global agent directory for user-level resources (the `~/.pi/agent/` equivalent):
-
-```text
-{agent_dir}/
-├── skills/                # User-level skills
-├── extensions/            # User-level extensions
-├── auth.json              # Credentials
-└── models.json            # Model configs
-```
-
-When both `cwd` and `agent_dir` are set, the SDK merges resources from both — project-level resources from `{cwd}/.pi/` and global resources from `{agent_dir}/`.
-
-**Example:** Create a project with custom skills and instructions:
-
-```bash
-mkdir -p /my/project/.pi/skills/code-reviewer
-cat > /my/project/.pi/skills/code-reviewer/SKILL.md << 'EOF'
----
-name: code-reviewer
-description: Review code for quality and best practices
----
-# Code Reviewer
-Analyze code for naming conventions, potential bugs, and improvements.
-EOF
-
-cat > /my/project/AGENTS.md << 'EOF'
-# Project Instructions
-You are an assistant for MyProject. Follow the project coding standards.
-EOF
-```
-
-```python
-# The AI session will have the code-reviewer skill and AGENTS.md instructions
-result = await call_ai_once(
-    "Review my code",
-    ai_provider="gemini",
-    ai_model="gemini-2.5-flash",
-    cwd="/my/project",
-)
-```
-
-## TypeScript Usage
-
-### Programmatic
-
-```ts
-import { startSidecar } from "@myk-org/pi-sidecar";
-
-startSidecar({ port: 9100, host: "127.0.0.1" });
-```
-
-### Standalone
-
-```bash
-npm run build
-node dist/server.js          # listens on 127.0.0.1:9100
-SIDECAR_PORT=9200 node dist/server.js   # custom port
-DEV_MODE=true node dist/server.js       # bind 0.0.0.0
-```
-
-## Python Client Usage
-
-### Single-shot call (auto-cleanup)
+## Quick Start
 
 ```python
 from pi_sidecar_client import call_ai_once
@@ -161,103 +25,13 @@ result = await call_ai_once(
 print(result.text)
 ```
 
-### Multi-turn conversation (session reuse)
-
-```python
-from pi_sidecar_client import call_ai, get_sidecar_client
-
-r1 = await call_ai("Analyze this failure", ai_provider="claude", ai_model="claude-sonnet-4-20250514")
-r2 = await call_ai("Now suggest a fix", session_id=r1.session_id)
-
-# Clean up when done
-await get_sidecar_client().delete_session(r2.session_id)
-```
-
-### Direct client usage
-
-```python
-from pi_sidecar_client import SidecarClient
-
-client = SidecarClient("http://127.0.0.1:9100")
-try:
-    sid = await client.create_session(
-        provider="google",
-        model="gemini-2.5-flash",
-        system_prompt="You are helpful.",
-    )
-    result = await client.prompt(sid, "Hello!")
-    print(result.text)
-    await client.delete_session(sid)
-finally:
-    await client.close()
-```
-
-### List models
-
-```python
-from pi_sidecar_client import list_models
-
-all_models = await list_models()
-gemini_only = await list_models(provider="gemini")
-```
-
-### Debugging
-
-Enable debug logs to trace all HTTP requests and responses:
-
-```python
-import os
-os.environ["PI_SIDECAR_LOG_LEVEL"] = "DEBUG"
-
-from pi_sidecar_client import call_ai_once
-# All client operations will now log at DEBUG level
-```
-
-## Testing
-
-**TypeScript sidecar:**
-
 ```bash
-npm install
-npm test
+# Start the sidecar
+npm run build && node dist/server.js  # listens on 127.0.0.1:9100
 ```
 
-**Python client:**
+See the [full documentation](https://myk-org.github.io/pi-sidecar/) for everything else.
 
-```bash
-uv pip install -e '.[tests]'
-pytest
-```
+## License
 
-## Examples
-
-See the [`examples/`](examples/) directory for usage patterns:
-
-| File | Description |
-|------|-------------|
-| `basic_prompt.py` | Single-shot AI call with `call_ai_once()` |
-| `multi_turn.py` | Multi-turn conversation with session reuse |
-| `list_models.py` | Discover available models by provider |
-| `health_check.py` | Verify sidecar is running and ready |
-| `parallel_tasks.py` | Run multiple AI calls with concurrency limiting |
-| `usage_tracking.py` | Track token usage with a pluggable callback |
-| `start-sidecar.ts` | Start the sidecar programmatically (TypeScript) |
-
-## Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SIDECAR_PORT` | `9100` | HTTP listen port |
-| `SIDECAR_URL` | `http://127.0.0.1:9100` | Base URL used by the Python client |
-| `PI_SIDECAR_LOG_LEVEL` | `INFO` | Python client log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `DEV_MODE` | `false` | Set `true` to bind `0.0.0.0` instead of `127.0.0.1` |
-| `ACPX_AGENTS` | *(empty)* | Comma-separated list of acpx agents to discover models from (e.g. `cursor`) |
-| `SIDECAR_ACPX_EXTENSION_PATH` | auto-resolved via `require.resolve` from `pi-orchestrator-config` | Path to the acpx provider extension |
-| `SIDECAR_VERTEX_EXTENSION_PATH` | auto-resolved via `require.resolve` from `node_modules` | Path to the Vertex Claude extension |
-| `SIDECAR_WATCHDOG_URL` | *(disabled)* | Health endpoint URL for watchdog monitoring. When set, the sidecar monitors this URL and shuts down if it becomes unresponsive. Disabled by default for standalone usage. |
-
-## Architecture Notes
-
-- **Watchdog**: opt-in health-check poller activated via `SIDECAR_WATCHDOG_URL`. When enabled, waits 60 s then monitors the given URL every 30 s; shuts down after 6 consecutive failures (~3 min). Timings are configurable via `watchdogOptions`. Disabled by default for standalone usage.
-- **Stale session cleanup**: sessions idle for >1 hour are automatically disposed (checked every 10 minutes).
-- **Model discovery**: runs at startup; `/health` returns 503 until complete.
+MIT

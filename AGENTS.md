@@ -189,3 +189,8 @@ Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library A
 ### 6. Resource loading via `cwd` and `agent_dir`
 
 The Pi SDK's `DefaultResourceLoader` loads project-level resources from `{cwd}/.pi/` (skills, prompts, extensions, themes) and `AGENTS.md` from `{cwd}/`. Callers control this by setting `cwd` in `POST /sessions`. The optional `agent_dir` parameter provides a global agent directory for user-level resources; it defaults to `/tmp/pi-sidecar-agent` when omitted. Validation requires `agent_dir` to be an absolute path pointing to an existing directory. In `DEV_MODE`, `agent_dir` is type-checked but path validation is skipped and the value is discarded with a warning log, preventing remote callers from steering resource loading.
+
+## Generated Documentation
+
+The `docs/` directory contains AI-generated documentation from docsfy.
+**NEVER edit these files manually.** To update documentation, regenerate using docsfy.
