@@ -161,7 +161,12 @@ class SidecarClient:
         custom_tools: list | None = None,
         tools: list[str] | None = None,
     ) -> str:
-        """Create a new AI session. Returns session_id."""
+        """Create a new AI session. Returns session_id.
+
+        The ``cwd`` parameter also controls project-level resource loading —
+        the Pi SDK automatically discovers skills, prompts, and extensions
+        from ``{cwd}/.pi/`` and loads ``AGENTS.md`` from ``{cwd}/``.
+        """
         sidecar_provider, sidecar_model = _map_provider_model(provider, model)
         logger.debug(
             "Creating session: provider=%s→%s, model=%s→%s, cwd=%s, custom_tools=%d, tools=%s",
@@ -303,6 +308,10 @@ async def call_ai(
 
     Creates a new session (or reuses *session_id*), sends the prompt,
     and returns the result with session_id attached.
+
+    The ``cwd`` parameter also controls project-level resource loading —
+    the Pi SDK automatically discovers skills, prompts, extensions, and themes
+    from ``{cwd}/.pi/`` and loads ``AGENTS.md`` from ``{cwd}/``.
 
     Session lifecycle:
     - Caller is responsible for deleting sessions when done.

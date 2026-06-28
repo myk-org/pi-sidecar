@@ -29,7 +29,7 @@ All endpoints accept/return JSON. Default base URL: `http://127.0.0.1:9100`.
 | `GET` | `/health` | Returns `{"status":"ok","sessions":N}`. 503 while model discovery is in progress. |
 | `GET` | `/models` | List all discovered models. |
 | `POST` | `/models/refresh` | Re-run model discovery and return updated list. |
-| `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, tools?, custom_tools?}` → `{session_id}` |
+| `POST` | `/sessions` | Create a session. Body: `{provider, model, system_prompt, cwd?, tools?, custom_tools?}` → `{session_id}`. The `cwd` also controls project resource loading (see [Project Resources](#project-resources)). |
 | `POST` | `/sessions/:id/prompt` | Send a message. Body: `{message}` → `{text, usage, error?}` |
 | `POST` | `/sessions/:id/abort` | Abort an in-progress prompt. |
 | `DELETE` | `/sessions/:id` | Delete a session and free resources. |
@@ -64,6 +64,53 @@ All endpoints accept/return JSON. Default base URL: `http://127.0.0.1:9100`.
 > **`POST /sessions/:id/prompt` — error field:**
 >
 > The response includes an optional `error` string field, present when the AI returned errors during processing. When `error` is set, `text` may still contain partial output. Python client callers: when `error` is present, `AIResult.success` will be `False`.
+
+## Project Resources
+
+The Pi SDK automatically loads project-level resources from the `cwd` directory passed to `POST /sessions`:
+
+```text
+{cwd}/
+├── AGENTS.md                  # Project agent instructions (injected into system prompt)
+└── .pi/
+    ├── skills/                # Project skills (each in its own directory with SKILL.md)
+    │   └── my-skill/
+    │       └── SKILL.md
+    ├── prompts/               # Prompt templates
+    ├── extensions/            # Project extensions
+    └── themes/                # UI themes
+```
+
+This means callers can customize AI behavior per-project without any sidecar code changes — just set `cwd` to a directory containing these files.
+
+**Example:** Create a project with custom skills and instructions:
+
+```bash
+mkdir -p /my/project/.pi/skills/code-reviewer
+cat > /my/project/.pi/skills/code-reviewer/SKILL.md << 'EOF'
+---
+name: code-reviewer
+description: Review code for quality and best practices
+---
+# Code Reviewer
+Analyze code for naming conventions, potential bugs, and improvements.
+EOF
+
+cat > /my/project/AGENTS.md << 'EOF'
+# Project Instructions
+You are an assistant for MyProject. Follow the project coding standards.
+EOF
+```
+
+```python
+# The AI session will have the code-reviewer skill and AGENTS.md instructions
+result = await call_ai_once(
+    "Review my code",
+    ai_provider="gemini",
+    ai_model="gemini-2.5-flash",
+    cwd="/my/project",
+)
+```
 
 ## TypeScript Usage
 

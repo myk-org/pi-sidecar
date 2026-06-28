@@ -352,6 +352,10 @@ export class SessionStore {
       compaction: { enabled: false },
     });
 
+    // The Pi SDK's DefaultResourceLoader automatically discovers project-level resources
+    // from {cwd}/.pi/ — including skills, prompts, extensions, and themes.
+    // It also loads AGENTS.md from {cwd}/ root as project agent instructions.
+    // Callers control resource loading by setting `cwd` to a directory containing these files.
     const loader = new DefaultResourceLoader({
       cwd: options.cwd,
       agentDir: "/tmp/pi-sidecar-agent",
