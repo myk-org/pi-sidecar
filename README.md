@@ -4,6 +4,16 @@ A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs
 
 📖 **[Full Documentation](https://myk-org.github.io/pi-sidecar/)**
 
+## Features
+
+- **Session management** — create, prompt, abort, and delete AI sessions over REST
+- **Model discovery** — auto-discover models from ACPX agents and built-in providers
+- **Custom tools** — plug in domain-specific tools at session creation via `custom_tools`
+- **HTTP-backed tools** — custom tools with `http` config get automatic request execution with parameter interpolation and security hardening
+- **Subagent delegation** — delegate tasks to specialized agents via the `subagent` tool (loaded as a Pi SDK extension)
+- **Watchdog** — opt-in health-check poller for companion backend liveness
+- **Localhost-only** — binds to `127.0.0.1` by default; no auth needed behind the network boundary
+
 ## Packages
 
 | Package | Language | Install |

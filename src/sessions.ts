@@ -311,19 +311,21 @@ export class SessionStore {
 
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];
-    const tryAddExtension = (path: string, label: string): void => {
-      if (!path) return;
+    const tryAddExtension = (path: string, label: string): boolean => {
+      if (!path) return false;
       try {
         accessSync(path);
         extensionPaths.push(path);
         logger.log(`[sidecar] Extension found: ${path}`);
+        return true;
       } catch (err) {
         logger.warn(`[sidecar] ${label} extension not found at ${path}:`, err);
+        return false;
       }
     };
     tryAddExtension(ACPX_EXTENSION, "ACPX");
     tryAddExtension(VERTEX_EXTENSION, "Vertex");
-    tryAddExtension(SUBAGENT_EXTENSION, "Subagent");
+    const subagentLoaded = tryAddExtension(SUBAGENT_EXTENSION, "Subagent");
     logger.log(`[sidecar] Loading ${extensionPaths.length} extensions`);
 
     // Build custom tools from config — result is cast to any[] for Pi SDK ToolDefinition compatibility
@@ -359,6 +361,10 @@ export class SessionStore {
     }).filter((t): t is NonNullable<typeof t> => t != null);
 
     const tools = options.tools ?? [...DEFAULT_TOOLS];
+    // Reject sessions requesting subagent tool when the extension didn't load
+    if (tools.includes("subagent") && !subagentLoaded) {
+      throw new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
+    }
     // Include custom tool names in the allowed tools list so the SDK
     // doesn't filter them out via allowedToolNames.
     const customToolNames = customTools.map((t: any) => t.name as string);

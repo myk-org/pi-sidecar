@@ -20,7 +20,7 @@ pi-sidecar/                        (repo root = npm package root)
 ├── package.json                    # @myk-org/pi-sidecar npm package
 ├── tsconfig.json                   # strict, ES2022, nodenext
 ├── src/
-│   ├── server.ts                   # CLI entry point — applies subagent subprocess fixes and starts sidecar
+│   ├── server.ts                   # CLI entry point — imports and calls startSidecar()
 │   ├── index.ts                    # HTTP server, routing, JSON helpers, startSidecar()
 │   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery, error surfacing
 │   ├── http-tool-executor.ts       # HTTP-backed custom tool executor with parameter interpolation
@@ -33,6 +33,7 @@ pi-sidecar/                        (repo root = npm package root)
 │   │   ├── message-boundary.test.ts # Multi-message newline separator tests
 │   │   ├── parse-body.test.ts     # Body parser tests
 │   │   ├── route-match.test.ts    # URL route matching tests
+│   │   ├── subagent-integration.test.ts # Subagent extension resolution and env var override tests
 │   │   ├── tools-config.test.ts   # DEFAULT_TOOLS, tools config, and agent_dir validation tests
 │   │   └── watchdog.test.ts       # Health check watchdog tests
 │   └── test_python/                # Python client tests
@@ -196,13 +197,13 @@ The `subagent` tool delegates tasks to specialized agents by spawning isolated `
 
 The tool is **not a built-in** — it ships as a Pi extension at `@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts` and is loaded via `additionalExtensionPaths` (same mechanism as ACPX and Vertex extensions). The SDK's jiti-based extension loader transpiles it at runtime and resolves all imports (`@earendil-works/pi-tui`, `typebox`, etc.) via virtual modules. The TUI rendering methods (`renderCall`/`renderResult`) are optional and never called in headless mode.
 
-The extension is loaded for all sessions. Callers make the tool available to the AI by including `"subagent"` in the `tools` array at session creation. Agents are discovered from markdown files with YAML frontmatter in `{agentDir}/agents/` (user-level) and `{cwd}/.pi/agents/` (project-level, requires `agentScope: "both"`).
+The extension is loaded for all sessions. Callers make the tool available to the AI by including `"subagent"` in the `tools` array at session creation. Session creation rejects with a 400 error if `"subagent"` is in the `tools` array but the extension could not be loaded. Agents are discovered from markdown files with YAML frontmatter in `{agentDir}/agents/` (user-level) and `{cwd}/.pi/agents/` (project-level, requires `agentScope: "both"`).
 
 Override the extension path with the `SIDECAR_SUBAGENT_EXTENSION_PATH` environment variable.
 
 ### 8. Subagent subprocess compatibility (`process.argv[1]` and PATH)
 
-The sidecar's `src/server.ts` applies two fixes before any imports to ensure the subagent extension spawns `pi` correctly:
+The sidecar's `startSidecar()` in `src/index.ts` applies two fixes to ensure the subagent extension spawns `pi` correctly:
 
 1. **`process.argv[1] = ""`** — The subagent extension's `getPiInvocation()` checks `process.argv[1]` — if it exists as a file, it runs `node <that-file> --mode json ...` instead of `pi --mode json ...`. In the sidecar context, `argv[1]` points to the sidecar's own entry script (`src/server.ts` or `dist/server.js`), which would re-run the sidecar. Clearing it forces the fallback to `{ command: "pi", args }`.
 

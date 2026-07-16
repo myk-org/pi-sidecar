@@ -67,6 +67,33 @@ export interface SidecarHandle {
 }
 
 export function startSidecar(options?: { port?: number; host?: string; watchdogUrl?: string; watchdogOptions?: WatchdogOptions }): SidecarHandle {
+  // --- Subagent subprocess compatibility fixes ---
+  // These must run before any subagent tool invocation to ensure spawned
+  // `pi` subprocesses work correctly. Applied here (not server.ts) so
+  // programmatic consumers via startSidecar() also get the fixes.
+
+  // Clear process.argv[1] so the subagent extension's getPiInvocation() falls
+  // through to `{ command: "pi", args }` instead of re-running the sidecar.
+  // Without this, it would try `node <entry-script> --mode json ...` which fails.
+  // TODO(#47): Remove when upstream getPiInvocation() supports override.
+  if (process.argv[1] && process.argv[1] !== "") {
+    process.argv[1] = "";
+  }
+
+  // Strip the sidecar's own node_modules/.bin from PATH so the subagent extension
+  // spawns the globally installed `pi` binary, not the local dependency (which may
+  // be a different version and cause extension loading errors in the subprocess).
+  if (process.env.PATH) {
+    const sidecarDir = process.cwd();
+    const parts = process.env.PATH.split(":"); // Unix-only; sidecar targets Linux/Docker containers
+    const kept = parts.filter((p) => !p.startsWith(sidecarDir + "/node_modules/.bin"));
+    const stripped = parts.length - kept.length;
+    if (stripped > 0) {
+      logger.debug(`[sidecar] Stripped ${stripped} local node_modules/.bin entries from PATH`);
+    }
+    process.env.PATH = kept.join(":");
+  }
+
   const PORT = options?.port ?? parseInt(process.env.SIDECAR_PORT || "9100", 10);
   const HOST = options?.host ?? (process.env.DEV_MODE === "true" ? "0.0.0.0" : "127.0.0.1");
 
@@ -241,6 +268,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       const message = err?.message || "Internal server error";
       const status = message.includes("not found for provider") ? 400
         : message.includes("Model is required") ? 400
+        : message.includes("could not be loaded") ? 400
         : message.includes("Payload too large") ? 413
         : message.includes("Invalid JSON") ? 400
         : message.includes("is busy") ? 409
