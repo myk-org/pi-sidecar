@@ -12,14 +12,24 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
+export interface ResolveResult {
+  path: string;
+  error?: string;
+}
+
 export function resolveExtensionPath(envVar: string, packageName: string, entryFile: string): string {
+  const result = resolveExtensionPathDetailed(envVar, packageName, entryFile);
+  return result.path;
+}
+
+export function resolveExtensionPathDetailed(envVar: string, packageName: string, entryFile: string): ResolveResult {
   const envPath = process.env[envVar];
-  if (envPath) return envPath;
+  if (envPath) return { path: envPath };
   try {
     // resolve() finds the package wherever npm installed it (hoisted or nested)
     const pkgJson = require.resolve(`${packageName}/package.json`);
-    return join(dirname(pkgJson), entryFile);
-  } catch {
+    return { path: join(dirname(pkgJson), entryFile) };
+  } catch (primaryErr) {
     // Fallback for ESM-only packages with strict "exports" that block /package.json.
     // Use require.resolve.paths() to get node_modules search dirs, then walk them
     // to find the package root without triggering exports validation.
@@ -30,7 +40,7 @@ export function resolveExtensionPath(envVar: string, packageName: string, entryF
           const candidate = join(searchDir, packageName, "package.json");
           try {
             accessSync(candidate);
-            return join(dirname(candidate), entryFile);
+            return { path: join(dirname(candidate), entryFile) };
           } catch {
             // not in this search dir, continue
           }
@@ -39,6 +49,7 @@ export function resolveExtensionPath(envVar: string, packageName: string, entryF
     } catch {
       // fallback exhausted
     }
-    return "";
+    const errMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+    return { path: "", error: `Could not resolve ${packageName}: ${errMsg}` };
   }
 }

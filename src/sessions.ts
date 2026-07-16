@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { accessSync } from "node:fs";
+import { statSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -18,9 +17,8 @@ import { getModel } from "@earendil-works/pi-ai";
 
 import { logger } from "./logger.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig } from "./http-tool-executor.js";
-import { resolveExtensionPath } from "./resolve-extension-path.js";
+import { resolveExtensionPathDetailed } from "./resolve-extension-path.js";
 
-const require = createRequire(import.meta.url);
 
 /** Strip bracket suffixes from model IDs for display or comparison (e.g. "cursor:default[]" → "cursor:default"). */
 function baseModelId(id: string): string {
@@ -106,12 +104,17 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
   }
 }
 
-const ACPX_EXTENSION = resolveExtensionPath("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
-if (!ACPX_EXTENSION) logger.debug(`[sidecar] RESOLVE_SKIPPED: package=pi-orchestrator-config`);
-const VERTEX_EXTENSION = resolveExtensionPath("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
-if (!VERTEX_EXTENSION) logger.debug(`[sidecar] RESOLVE_SKIPPED: package=pi-vertex-claude`);
-const SUBAGENT_EXTENSION = resolveExtensionPath("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
-if (!SUBAGENT_EXTENSION) logger.debug(`[sidecar] RESOLVE_SKIPPED: package=@earendil-works/pi-coding-agent`);
+function resolveAndLog(envVar: string, packageName: string, entryFile: string): string {
+  const result = resolveExtensionPathDetailed(envVar, packageName, entryFile);
+  if (!result.path) {
+    logger.debug(`[sidecar] RESOLVE_SKIPPED: package=${packageName}, reason=${result.error || "unknown"}`);
+  }
+  return result.path;
+}
+
+const ACPX_EXTENSION = resolveAndLog("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
+const VERTEX_EXTENSION = resolveAndLog("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
+const SUBAGENT_EXTENSION = resolveAndLog("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
 
 export const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
 
@@ -285,7 +288,11 @@ export class SessionStore {
     const tryAddExtension = (path: string, label: string): boolean => {
       if (!path) return false;
       try {
-        accessSync(path);
+        const stat = statSync(path);
+        if (!stat.isFile()) {
+          logger.warn(`[sidecar] EXTENSION_NOT_FILE: label=${label}, path=${path}`);
+          return false;
+        }
         extensionPaths.push(path);
         logger.log(`[sidecar] EXTENSION_FOUND: label=${label}, path=${path}`);
         return true;

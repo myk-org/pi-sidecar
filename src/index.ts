@@ -3,9 +3,10 @@ export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 export { createHttpToolExecutor, normalizeHttpToolConfig, interpolate, type HttpToolConfig } from "./http-tool-executor.js";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 
 import { SessionStore } from "./sessions.js";
 import { startWatchdog, type WatchdogOptions } from "./watchdog.js";
@@ -80,13 +81,20 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   if (process.env.PATH) {
     const sidecarRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const sidecarBin = join(sidecarRoot, "node_modules", ".bin");
-    const parts = process.env.PATH.split(":"); // Unix-only; sidecar targets Linux/Docker containers
+    const parts = process.env.PATH.split(delimiter);
     const kept = parts.filter((p) => p !== sidecarBin);
     const stripped = parts.length - kept.length;
     if (stripped > 0) {
-      logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dir=${sidecarBin}`);
+      // Only strip if `pi` is still reachable on the remaining PATH
+      try {
+        const testPath = kept.join(delimiter);
+        execSync("command -v pi", { env: { ...process.env, PATH: testPath }, stdio: "ignore", timeout: 5000 });
+        process.env.PATH = testPath;
+        logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dir=${sidecarBin}`);
+      } catch {
+        logger.debug(`[sidecar] PATH_FILTER_SKIPPED: dir=${sidecarBin}, reason=pi_not_found_elsewhere`);
+      }
     }
-    process.env.PATH = kept.join(":");
   }
 
   const PORT = options?.port ?? parseInt(process.env.SIDECAR_PORT || "9100", 10);
