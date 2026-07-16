@@ -79,25 +79,45 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   // a project's node_modules/.bin when the sidecar is started from a project directory.
   if (process.env.PATH) {
     const sidecarRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-    const sidecarBin = join(sidecarRoot, "node_modules", ".bin");
+    // Collect sidecar's own .bin and any ancestor node_modules/.bin that might
+    // contain a hoisted pi binary from this sidecar's dependency tree.
+    const sidecarBins = new Set<string>();
+    sidecarBins.add(resolve(join(sidecarRoot, "node_modules", ".bin")));
+    let ancestor = dirname(sidecarRoot);
+    while (true) {
+      const candidate = resolve(join(ancestor, "node_modules", ".bin"));
+      // Only include if the ancestor contains a pi binary
+      const piShim = join(candidate, "pi");
+      try {
+        if (statSync(piShim).isFile()) sidecarBins.add(candidate);
+      } catch { /* not found, skip */ }
+      const parent = dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
+    }
     const parts = process.env.PATH.split(delimiter);
-    const normalizedSidecarBin = resolve(sidecarBin);
     const kept = parts.filter((p) => {
       if (!p || !isAbsolute(p)) return true;
-      try { return resolve(p) !== normalizedSidecarBin; } catch { return true; }
+      try { return !sidecarBins.has(resolve(p)); } catch { return true; }
     });
     const stripped = parts.length - kept.length;
     if (stripped > 0) {
-      // Only strip if `pi` is still reachable on the remaining PATH
+      // Only strip if `pi` is still reachable on the remaining PATH.
+      // Check for platform-appropriate executable names (pi, pi.cmd, pi.exe).
+      const piNames = process.platform === "win32"
+        ? ["pi.cmd", "pi.exe", "pi"]
+        : ["pi"];
       const piReachable = kept.some((dir) => {
         if (!dir || !isAbsolute(dir)) return false;
-        try { return statSync(join(dir, "pi")).isFile(); } catch { return false; }
+        return piNames.some((name) => {
+          try { return statSync(join(dir, name)).isFile(); } catch { return false; }
+        });
       });
       if (piReachable) {
         process.env.PATH = kept.join(delimiter);
-        logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dir=${sidecarBin}`);
+        logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dirs=${[...sidecarBins].join(",")}`);
       } else {
-        logger.debug(`[sidecar] PATH_FILTER_SKIPPED: dir=${sidecarBin}, reason=pi_not_found_elsewhere`);
+        logger.debug(`[sidecar] PATH_FILTER_SKIPPED: dirs=${[...sidecarBins].join(",")}, reason=pi_not_found_elsewhere`);
       }
     }
   }
