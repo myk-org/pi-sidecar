@@ -13,7 +13,7 @@ describe("subagent extension integration", () => {
     );
     assert.ok(extPath.length > 0, "extension path should resolve");
     assert.ok(
-      extPath.endsWith("examples/extensions/subagent/index.ts"),
+      extPath.replaceAll("\\", "/").endsWith("examples/extensions/subagent/index.ts"),
       `should end with extension entry file, got: ${extPath}`,
     );
     // Verify the file actually exists on disk

@@ -68,18 +68,9 @@ export interface SidecarHandle {
 }
 
 export function startSidecar(options?: { port?: number; host?: string; watchdogUrl?: string; watchdogOptions?: WatchdogOptions }): SidecarHandle {
-  // --- Subagent subprocess compatibility fixes ---
-  // These must run before any subagent tool invocation to ensure spawned
-  // `pi` subprocesses work correctly. Applied here (not server.ts) so
-  // programmatic consumers via startSidecar() also get the fixes.
-
-  // Clear process.argv[1] so the subagent extension's getPiInvocation() falls
-  // through to `{ command: "pi", args }` instead of re-running the sidecar.
-  // Without this, it would try `node <entry-script> --mode json ...` which fails.
-  // TODO(#47): Remove when upstream getPiInvocation() supports override.
-  if (process.argv[1] && process.argv[1] !== "") {
-    process.argv[1] = "";
-  }
+  // --- Subagent subprocess compatibility ---
+  // PATH fix applied here so programmatic consumers also get it.
+  // The argv[1] fix is in server.ts (CLI entry only).
 
   // Strip the sidecar's own node_modules/.bin from PATH so the subagent extension
   // spawns the globally installed `pi` binary, not the local dependency (which may

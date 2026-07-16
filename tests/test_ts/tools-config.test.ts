@@ -397,13 +397,13 @@ describe("resolveExtensionPath", () => {
   it("resolves CJS package via require.resolve (pi-orchestrator-config)", () => {
     const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
     assert.ok(result.length > 0, "should resolve to a non-empty path");
-    assert.ok(result.endsWith("extensions/acpx-provider/index.ts"), `path should end with entry file, got: ${result}`);
+    assert.ok(result.replaceAll("\\", "/").endsWith("extensions/acpx-provider/index.ts"), `path should end with entry file, got: ${result}`);
   });
 
   it("resolves ESM-only package via search-path fallback (@earendil-works/pi-coding-agent)", () => {
     const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
     assert.ok(result.length > 0, "should resolve to a non-empty path");
-    assert.ok(result.endsWith("examples/extensions/subagent/index.ts"), `path should end with entry file, got: ${result}`);
+    assert.ok(result.replaceAll("\\", "/").endsWith("examples/extensions/subagent/index.ts"), `path should end with entry file, got: ${result}`);
   });
 
   it("returns empty string for nonexistent package", () => {
@@ -414,6 +414,6 @@ describe("resolveExtensionPath", () => {
   it("handles scoped package names", () => {
     const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "@earendil-works/pi-ai", "dist/index.js");
     assert.ok(result.length > 0, "should resolve scoped package");
-    assert.ok(result.endsWith("dist/index.js"), `path should end with entry file, got: ${result}`);
+    assert.ok(result.replaceAll("\\", "/").endsWith("dist/index.js"), `path should end with entry file, got: ${result}`);
   });
 });
