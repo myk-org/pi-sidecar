@@ -1,0 +1,44 @@
+/**
+ * Extension path resolution — single source of truth.
+ *
+ * Used by sessions.ts at runtime and by tests for validation.
+ * Logging is handled by the caller (sessions.ts) to avoid coupling
+ * this module to the logger.
+ */
+
+import { accessSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+
+export function resolveExtensionPath(envVar: string, packageName: string, entryFile: string): string {
+  const envPath = process.env[envVar];
+  if (envPath) return envPath;
+  try {
+    // resolve() finds the package wherever npm installed it (hoisted or nested)
+    const pkgJson = require.resolve(`${packageName}/package.json`);
+    return join(dirname(pkgJson), entryFile);
+  } catch {
+    // Fallback for ESM-only packages with strict "exports" that block /package.json.
+    // Use require.resolve.paths() to get node_modules search dirs, then walk them
+    // to find the package root without triggering exports validation.
+    try {
+      const searchPaths = require.resolve.paths(packageName);
+      if (searchPaths) {
+        for (const searchDir of searchPaths) {
+          const candidate = join(searchDir, packageName, "package.json");
+          try {
+            accessSync(candidate);
+            return join(dirname(candidate), entryFile);
+          } catch {
+            // not in this search dir, continue
+          }
+        }
+      }
+    } catch {
+      // fallback exhausted
+    }
+    return "";
+  }
+}

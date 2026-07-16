@@ -6,7 +6,8 @@ import { isAbsolute, join } from "node:path";
 import { statSync, mkdtempSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-import { DEFAULT_TOOLS, resolveExtensionPath } from "../../src/sessions.js";
+import { DEFAULT_TOOLS } from "../../src/sessions.js";
+import { resolveExtensionPath } from "../../src/resolve-extension-path.js";
 import { parseBody } from "../../src/index.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig, type HttpToolConfig } from "../../src/http-tool-executor.js";
 

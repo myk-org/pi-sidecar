@@ -18,6 +18,7 @@ import { getModel } from "@earendil-works/pi-ai";
 
 import { logger } from "./logger.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig } from "./http-tool-executor.js";
+import { resolveExtensionPath } from "./resolve-extension-path.js";
 
 const require = createRequire(import.meta.url);
 
@@ -105,42 +106,12 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
   }
 }
 
-/** @internal Exported for testing only. */
-export function resolveExtensionPath(envVar: string, packageName: string, entryFile: string): string {
-  const envPath = process.env[envVar];
-  if (envPath) return envPath;
-  try {
-    // resolve() finds the package wherever npm installed it (hoisted or nested)
-    const pkgJson = require.resolve(`${packageName}/package.json`);
-    return join(dirname(pkgJson), entryFile);
-  } catch (primaryErr) {
-    // Fallback for ESM-only packages with strict "exports" that block /package.json.
-    // Use require.resolve.paths() to get node_modules search dirs, then walk them
-    // to find the package root without triggering exports validation.
-    try {
-      const searchPaths = require.resolve.paths(packageName);
-      if (searchPaths) {
-        for (const searchDir of searchPaths) {
-          const candidate = join(searchDir, packageName, "package.json");
-          try {
-            accessSync(candidate);
-            return join(dirname(candidate), entryFile);
-          } catch {
-            // not in this search dir, continue
-          }
-        }
-      }
-    } catch (err) {
-      logger.debug(`[sidecar] RESOLVE_FAILED: package=${packageName}, strategy=search_paths`, err);
-    }
-    logger.debug(`[sidecar] RESOLVE_FAILED: package=${packageName}, strategy=all`, primaryErr);
-    return "";
-  }
-}
-
 const ACPX_EXTENSION = resolveExtensionPath("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
+if (!ACPX_EXTENSION) logger.debug(`[sidecar] RESOLVE_SKIPPED: package=pi-orchestrator-config`);
 const VERTEX_EXTENSION = resolveExtensionPath("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
+if (!VERTEX_EXTENSION) logger.debug(`[sidecar] RESOLVE_SKIPPED: package=pi-vertex-claude`);
 const SUBAGENT_EXTENSION = resolveExtensionPath("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
+if (!SUBAGENT_EXTENSION) logger.debug(`[sidecar] RESOLVE_SKIPPED: package=@earendil-works/pi-coding-agent`);
 
 export const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
 

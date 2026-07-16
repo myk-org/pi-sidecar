@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { accessSync } from "node:fs";
 
-import { resolveExtensionPath } from "../../src/sessions.js";
+import { resolveExtensionPath } from "../../src/resolve-extension-path.js";
 
 describe("subagent extension integration", () => {
   it("resolves the subagent extension path from @earendil-works/pi-coding-agent", () => {
@@ -30,19 +30,14 @@ describe("subagent extension integration", () => {
     assert.doesNotThrow(() => accessSync(extPath), `agents.ts should exist at: ${extPath}`);
   });
 
-  it("respects SIDECAR_SUBAGENT_EXTENSION_PATH env var override", () => {
-    const envVar = "SIDECAR_SUBAGENT_EXTENSION_PATH";
-    const original = process.env[envVar];
+  it("respects env var override", () => {
+    const envVar = "TEST_SUBAGENT_EXT_PATH_" + Date.now();
     try {
       process.env[envVar] = "/custom/override/path.ts";
       const result = resolveExtensionPath(envVar, "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
       assert.equal(result, "/custom/override/path.ts", "should use env var when set");
     } finally {
-      if (original !== undefined) {
-        process.env[envVar] = original;
-      } else {
-        delete process.env[envVar];
-      }
+      delete process.env[envVar];
     }
   });
 

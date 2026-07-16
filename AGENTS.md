@@ -20,8 +20,9 @@ pi-sidecar/                        (repo root = npm package root)
 ├── package.json                    # @myk-org/pi-sidecar npm package
 ├── tsconfig.json                   # strict, ES2022, nodenext
 ├── src/
-│   ├── server.ts                   # CLI entry point — applies subagent subprocess fixes and starts sidecar
+│   ├── server.ts                   # CLI entry point — clears process.argv[1] for subagent compat, starts sidecar
 │   ├── index.ts                    # HTTP server, routing, JSON helpers, startSidecar()
+│   ├── resolve-extension-path.ts   # Extension path resolution with ESM fallback for strict exports
 │   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery, error surfacing
 │   ├── http-tool-executor.ts       # HTTP-backed custom tool executor with parameter interpolation
 │   ├── logger.ts                   # Log-level-aware logger wrapping console.* APIs (gated by PI_SIDECAR_LOG_LEVEL)
