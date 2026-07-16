@@ -115,9 +115,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       });
       if (piReachable) {
         process.env.PATH = kept.join(delimiter);
-        logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dirs=${[...sidecarBins].join(",")}`);
+        logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dirs=${[...sidecarBins].join(";")}`);  // semicolon-separated to avoid breaking key=value format
       } else {
-        logger.debug(`[sidecar] PATH_FILTER_SKIPPED: dirs=${[...sidecarBins].join(",")}, reason=pi_not_found_elsewhere`);
+        logger.debug(`[sidecar] PATH_FILTER_SKIPPED: dirs=${[...sidecarBins].join(";")}, reason=pi_not_found_elsewhere`);
       }
     }
   }
