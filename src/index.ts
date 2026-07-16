@@ -90,7 +90,11 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       const piShim = join(candidate, "pi");
       try {
         if (statSync(piShim).isFile()) sidecarBins.add(candidate);
-      } catch { /* ENOENT expected for most ancestors — not logged */ }
+      } catch (e: any) {
+        if (e?.code && e.code !== "ENOENT") {
+          logger.debug(`[sidecar] PATH_ANCESTOR_CHECK_FAILED: path=${piShim}, error=${e.code}`);
+        }
+      }
       const parent = dirname(ancestor);
       if (parent === ancestor) break;
       ancestor = parent;
