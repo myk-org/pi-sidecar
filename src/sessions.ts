@@ -105,21 +105,42 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
   }
 }
 
-function resolveExtensionPath(envVar: string, packageName: string, entryFile: string): string {
+/** @internal Exported for testing only. */
+export function resolveExtensionPath(envVar: string, packageName: string, entryFile: string): string {
   const envPath = process.env[envVar];
   if (envPath) return envPath;
   try {
     // resolve() finds the package wherever npm installed it (hoisted or nested)
     const pkgJson = require.resolve(`${packageName}/package.json`);
     return join(dirname(pkgJson), entryFile);
-  } catch (err) {
-    logger.debug(`[sidecar] Could not resolve ${packageName}:`, err);
+  } catch (primaryErr) {
+    // Fallback for ESM-only packages with strict "exports" that block /package.json.
+    // Use require.resolve.paths() to get node_modules search dirs, then walk them
+    // to find the package root without triggering exports validation.
+    try {
+      const searchPaths = require.resolve.paths(packageName);
+      if (searchPaths) {
+        for (const searchDir of searchPaths) {
+          const candidate = join(searchDir, packageName, "package.json");
+          try {
+            accessSync(candidate);
+            return join(dirname(candidate), entryFile);
+          } catch {
+            // not in this search dir, continue
+          }
+        }
+      }
+    } catch (err) {
+      logger.debug(`[sidecar] Could not resolve ${packageName}:`, err);
+    }
+    logger.debug(`[sidecar] Could not resolve ${packageName} via require.resolve or search paths, primary error:`, primaryErr);
     return "";
   }
 }
 
 const ACPX_EXTENSION = resolveExtensionPath("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
 const VERTEX_EXTENSION = resolveExtensionPath("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
+const SUBAGENT_EXTENSION = resolveExtensionPath("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
 
 export const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
 
@@ -290,24 +311,19 @@ export class SessionStore {
 
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];
-    if (ACPX_EXTENSION) {
+    const tryAddExtension = (path: string, label: string): void => {
+      if (!path) return;
       try {
-        accessSync(ACPX_EXTENSION);
-        extensionPaths.push(ACPX_EXTENSION);
-        logger.log(`[sidecar] Extension found: ${ACPX_EXTENSION}`);
+        accessSync(path);
+        extensionPaths.push(path);
+        logger.log(`[sidecar] Extension found: ${path}`);
       } catch (err) {
-        logger.warn(`[sidecar] ACPX extension not found at ${ACPX_EXTENSION}:`, err);
+        logger.warn(`[sidecar] ${label} extension not found at ${path}:`, err);
       }
-    }
-    if (VERTEX_EXTENSION) {
-      try {
-        accessSync(VERTEX_EXTENSION);
-        extensionPaths.push(VERTEX_EXTENSION);
-        logger.log(`[sidecar] Extension found: ${VERTEX_EXTENSION}`);
-      } catch (err) {
-        logger.warn(`[sidecar] Vertex extension not found at ${VERTEX_EXTENSION}:`, err);
-      }
-    }
+    };
+    tryAddExtension(ACPX_EXTENSION, "ACPX");
+    tryAddExtension(VERTEX_EXTENSION, "Vertex");
+    tryAddExtension(SUBAGENT_EXTENSION, "Subagent");
     logger.log(`[sidecar] Loading ${extensionPaths.length} extensions`);
 
     // Build custom tools from config — result is cast to any[] for Pi SDK ToolDefinition compatibility

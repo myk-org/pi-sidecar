@@ -20,7 +20,7 @@ pi-sidecar/                        (repo root = npm package root)
 ├── package.json                    # @myk-org/pi-sidecar npm package
 ├── tsconfig.json                   # strict, ES2022, nodenext
 ├── src/
-│   ├── server.ts                   # CLI entry point — imports and calls startSidecar()
+│   ├── server.ts                   # CLI entry point — applies subagent subprocess fixes and starts sidecar
 │   ├── index.ts                    # HTTP server, routing, JSON helpers, startSidecar()
 │   ├── sessions.ts                 # SessionStore — create/prompt/abort/delete sessions, model discovery, error surfacing
 │   ├── http-tool-executor.ts       # HTTP-backed custom tool executor with parameter interpolation
@@ -189,6 +189,28 @@ Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library A
 ### 6. Resource loading via `cwd` and `agent_dir`
 
 The Pi SDK's `DefaultResourceLoader` loads project-level resources from `{cwd}/.pi/` (skills, prompts, extensions, themes) and `AGENTS.md` from `{cwd}/`. Callers control this by setting `cwd` in `POST /sessions`. The optional `agent_dir` parameter provides a global agent directory for user-level resources; it defaults to `/tmp/pi-sidecar-agent` when omitted. Validation requires `agent_dir` to be an absolute path pointing to an existing directory. In `DEV_MODE`, `agent_dir` is type-checked but path validation is skipped and the value is discarded with a warning log, preventing remote callers from steering resource loading.
+
+### 7. Subagent tool loaded as an SDK extension
+
+The `subagent` tool delegates tasks to specialized agents by spawning isolated `pi --mode json` subprocesses. It supports single, parallel (max 8, 4 concurrent), and chain modes with `{previous}` placeholder interpolation.
+
+The tool is **not a built-in** — it ships as a Pi extension at `@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts` and is loaded via `additionalExtensionPaths` (same mechanism as ACPX and Vertex extensions). The SDK's jiti-based extension loader transpiles it at runtime and resolves all imports (`@earendil-works/pi-tui`, `typebox`, etc.) via virtual modules. The TUI rendering methods (`renderCall`/`renderResult`) are optional and never called in headless mode.
+
+The extension is loaded for all sessions. Callers make the tool available to the AI by including `"subagent"` in the `tools` array at session creation. Agents are discovered from markdown files with YAML frontmatter in `{agentDir}/agents/` (user-level) and `{cwd}/.pi/agents/` (project-level, requires `agentScope: "both"`).
+
+Override the extension path with the `SIDECAR_SUBAGENT_EXTENSION_PATH` environment variable.
+
+### 8. Subagent subprocess compatibility (`process.argv[1]` and PATH)
+
+The sidecar's `src/server.ts` applies two fixes before any imports to ensure the subagent extension spawns `pi` correctly:
+
+1. **`process.argv[1] = ""`** — The subagent extension's `getPiInvocation()` checks `process.argv[1]` — if it exists as a file, it runs `node <that-file> --mode json ...` instead of `pi --mode json ...`. In the sidecar context, `argv[1]` points to the sidecar's own entry script (`src/server.ts` or `dist/server.js`), which would re-run the sidecar. Clearing it forces the fallback to `{ command: "pi", args }`.
+
+2. **PATH filtering** — The sidecar's `node_modules/.bin/` contains a local `pi` binary from its `@earendil-works/pi-coding-agent` dependency, which may be a different version than the globally installed `pi`. If the local version is older, the spawned subprocess will fail with extension loading errors (e.g., missing APIs). The fix strips the sidecar's `node_modules/.bin` from PATH so the globally installed `pi` is used.
+
+### 9. Extension path resolution with ESM fallback
+
+`resolveExtensionPath()` locates extension entry files by finding a package's root directory. The primary strategy uses `require.resolve('pkg/package.json')`, which works for CJS packages. For ESM-only packages with strict `exports` (like `@earendil-works/pi-coding-agent`), this throws `ERR_PACKAGE_PATH_NOT_EXPORTED`. The fallback uses `require.resolve.paths()` to get `node_modules` search directories, then walks them to find `package.json` without triggering exports validation. All three extensions (ACPX, Vertex, Subagent) support path overrides via `SIDECAR_ACPX_EXTENSION_PATH`, `SIDECAR_VERTEX_EXTENSION_PATH`, and `SIDECAR_SUBAGENT_EXTENSION_PATH` environment variables.
 
 ## Generated Documentation
 
