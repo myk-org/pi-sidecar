@@ -86,6 +86,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
     if (stripped > 0) {
       // Only strip if `pi` is still reachable on the remaining PATH
       const piReachable = kept.some((dir) => {
+        if (!dir || !isAbsolute(dir)) return false;
         try { return statSync(join(dir, "pi")).isFile(); } catch { return false; }
       });
       if (piReachable) {

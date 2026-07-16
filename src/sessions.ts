@@ -286,7 +286,10 @@ export class SessionStore {
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];
     const tryAddExtension = (path: string, label: string): boolean => {
-      if (!path) return false;
+      if (!path) {
+        logger.warn(`[sidecar] EXTENSION_RESOLVE_EMPTY: label=${label}`);
+        return false;
+      }
       try {
         const stat = statSync(path);
         if (!stat.isFile()) {
@@ -297,7 +300,8 @@ export class SessionStore {
         logger.log(`[sidecar] EXTENSION_FOUND: label=${label}, path=${path}`);
         return true;
       } catch (err) {
-        logger.warn(`[sidecar] EXTENSION_NOT_FOUND: label=${label}, path=${path}`, err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.warn(`[sidecar] EXTENSION_NOT_FOUND: label=${label}, path=${path}, error=${errMsg}`);
         return false;
       }
     };
