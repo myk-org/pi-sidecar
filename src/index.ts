@@ -90,7 +90,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       const piShim = join(candidate, "pi");
       try {
         if (statSync(piShim).isFile()) sidecarBins.add(candidate);
-      } catch { /* not found, skip */ }
+      } catch { /* ENOENT expected for most ancestors — not logged */ }
       const parent = dirname(ancestor);
       if (parent === ancestor) break;
       ancestor = parent;
@@ -307,7 +307,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("not found") ? 404
         : 500);
       if (status === 500) {
-        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}`, err);
+        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`, err);
       } else {
         logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`);
       }
