@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { accessSync } from "node:fs";
+import { statSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -18,8 +17,8 @@ import { getModel } from "@earendil-works/pi-ai";
 
 import { logger } from "./logger.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig } from "./http-tool-executor.js";
+import { resolveExtensionPathDetailed } from "./resolve-extension-path.js";
 
-const require = createRequire(import.meta.url);
 
 /** Strip bracket suffixes from model IDs for display or comparison (e.g. "cursor:default[]" → "cursor:default"). */
 function baseModelId(id: string): string {
@@ -105,21 +104,17 @@ async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; na
   }
 }
 
-function resolveExtensionPath(envVar: string, packageName: string, entryFile: string): string {
-  const envPath = process.env[envVar];
-  if (envPath) return envPath;
-  try {
-    // resolve() finds the package wherever npm installed it (hoisted or nested)
-    const pkgJson = require.resolve(`${packageName}/package.json`);
-    return join(dirname(pkgJson), entryFile);
-  } catch (err) {
-    logger.debug(`[sidecar] Could not resolve ${packageName}:`, err);
-    return "";
+function resolveAndLog(envVar: string, packageName: string, entryFile: string): string {
+  const result = resolveExtensionPathDetailed(envVar, packageName, entryFile);
+  if (!result.path) {
+    logger.debug(`[sidecar] RESOLVE_SKIPPED: package=${packageName}, reason=${result.error || "unknown"}`);
   }
+  return result.path;
 }
 
-const ACPX_EXTENSION = resolveExtensionPath("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
-const VERTEX_EXTENSION = resolveExtensionPath("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
+const ACPX_EXTENSION = resolveAndLog("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
+const VERTEX_EXTENSION = resolveAndLog("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
+const SUBAGENT_EXTENSION = resolveAndLog("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
 
 export const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
 
@@ -290,25 +285,30 @@ export class SessionStore {
 
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];
-    if (ACPX_EXTENSION) {
-      try {
-        accessSync(ACPX_EXTENSION);
-        extensionPaths.push(ACPX_EXTENSION);
-        logger.log(`[sidecar] Extension found: ${ACPX_EXTENSION}`);
-      } catch (err) {
-        logger.warn(`[sidecar] ACPX extension not found at ${ACPX_EXTENSION}:`, err);
+    const tryAddExtension = (path: string, label: string): boolean => {
+      if (!path) {
+        logger.warn(`[sidecar] EXTENSION_RESOLVE_EMPTY: label=${label}`);
+        return false;
       }
-    }
-    if (VERTEX_EXTENSION) {
       try {
-        accessSync(VERTEX_EXTENSION);
-        extensionPaths.push(VERTEX_EXTENSION);
-        logger.log(`[sidecar] Extension found: ${VERTEX_EXTENSION}`);
+        const stat = statSync(path);
+        if (!stat.isFile()) {
+          logger.warn(`[sidecar] EXTENSION_NOT_FILE: label=${label}, path=${path}`);
+          return false;
+        }
+        extensionPaths.push(path);
+        logger.log(`[sidecar] EXTENSION_FOUND: label=${label}, path=${path}`);
+        return true;
       } catch (err) {
-        logger.warn(`[sidecar] Vertex extension not found at ${VERTEX_EXTENSION}:`, err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.warn(`[sidecar] EXTENSION_NOT_FOUND: label=${label}, path=${path}, error=${errMsg}`);
+        return false;
       }
-    }
-    logger.log(`[sidecar] Loading ${extensionPaths.length} extensions`);
+    };
+    tryAddExtension(ACPX_EXTENSION, "ACPX");
+    tryAddExtension(VERTEX_EXTENSION, "Vertex");
+    const subagentLoaded = tryAddExtension(SUBAGENT_EXTENSION, "Subagent");
+    logger.log(`[sidecar] EXTENSIONS_LOADING: count=${extensionPaths.length}`);
 
     // Build custom tools from config — result is cast to any[] for Pi SDK ToolDefinition compatibility
     const customTools: any[] = (options.customTools || []).map((tool) => {
@@ -343,6 +343,12 @@ export class SessionStore {
     }).filter((t): t is NonNullable<typeof t> => t != null);
 
     const tools = options.tools ?? [...DEFAULT_TOOLS];
+    // Reject sessions requesting subagent tool when the extension didn't load
+    if (tools.includes("subagent") && !subagentLoaded) {
+      const err = new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
+      (err as any).statusCode = 400;
+      throw err;
+    }
     // Include custom tool names in the allowed tools list so the SDK
     // doesn't filter them out via allowedToolNames.
     const customToolNames = customTools.map((t: any) => t.name as string);

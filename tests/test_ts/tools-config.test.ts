@@ -7,6 +7,7 @@ import { statSync, mkdtempSync, writeFileSync, unlinkSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 
 import { DEFAULT_TOOLS } from "../../src/sessions.js";
+import { resolveExtensionPath, resolveExtensionPathDetailed } from "../../src/resolve-extension-path.js";
 import { parseBody } from "../../src/index.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig, type HttpToolConfig } from "../../src/http-tool-executor.js";
 
@@ -379,5 +380,56 @@ describe("POST /sessions agent_dir validation", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("resolveExtensionPath", () => {
+  it("returns env var value when set", () => {
+    const envVar = "TEST_RESOLVE_EXT_PATH_" + Date.now();
+    process.env[envVar] = "/custom/path/ext.ts";
+    try {
+      const result = resolveExtensionPath(envVar, "nonexistent-pkg", "index.ts");
+      assert.equal(result, "/custom/path/ext.ts");
+    } finally {
+      delete process.env[envVar];
+    }
+  });
+
+  it("resolves CJS package via require.resolve (pi-orchestrator-config)", () => {
+    const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
+    assert.ok(result.length > 0, "should resolve to a non-empty path");
+    assert.ok(result.replaceAll("\\", "/").endsWith("extensions/acpx-provider/index.ts"), `path should end with entry file, got: ${result}`);
+  });
+
+  it("resolves ESM-only package via search-path fallback (@earendil-works/pi-coding-agent)", () => {
+    const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
+    assert.ok(result.length > 0, "should resolve to a non-empty path");
+    assert.ok(result.replaceAll("\\", "/").endsWith("examples/extensions/subagent/index.ts"), `path should end with entry file, got: ${result}`);
+  });
+
+  it("returns empty string for nonexistent package", () => {
+    const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "nonexistent-pkg-that-does-not-exist-12345", "index.ts");
+    assert.equal(result, "");
+  });
+
+  it("handles scoped package names", () => {
+    const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "@earendil-works/pi-ai", "dist/index.js");
+    assert.ok(result.length > 0, "should resolve scoped package");
+    assert.ok(result.replaceAll("\\", "/").endsWith("dist/index.js"), `path should end with entry file, got: ${result}`);
+  });
+});
+
+describe("resolveExtensionPathDetailed", () => {
+  it("returns error for nonexistent package", () => {
+    const result = resolveExtensionPathDetailed("UNUSED_ENV_" + Date.now(), "nonexistent-pkg-that-does-not-exist-99999", "index.ts");
+    assert.equal(result.path, "");
+    assert.ok(result.error, "should include an error message");
+    assert.ok(result.error!.includes("Could not resolve"), `error should describe failure, got: ${result.error}`);
+  });
+
+  it("returns path without error for valid package", () => {
+    const result = resolveExtensionPathDetailed("UNUSED_ENV_" + Date.now(), "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
+    assert.ok(result.path.length > 0, "should resolve to a non-empty path");
+    assert.equal(result.error, undefined, "should not have an error");
   });
 });

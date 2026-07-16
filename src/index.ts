@@ -3,8 +3,9 @@ export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 export { createHttpToolExecutor, normalizeHttpToolConfig, interpolate, type HttpToolConfig } from "./http-tool-executor.js";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { isAbsolute } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { SessionStore } from "./sessions.js";
 import { startWatchdog, type WatchdogOptions } from "./watchdog.js";
@@ -67,6 +68,64 @@ export interface SidecarHandle {
 }
 
 export function startSidecar(options?: { port?: number; host?: string; watchdogUrl?: string; watchdogOptions?: WatchdogOptions }): SidecarHandle {
+  // --- Subagent subprocess compatibility ---
+  // PATH fix applied here so programmatic consumers also get it.
+  // The argv[1] fix is in server.ts (CLI entry only).
+
+  // Strip the sidecar's own node_modules/.bin from PATH so the subagent extension
+  // spawns the globally installed `pi` binary, not the local dependency (which may
+  // be a different version and cause extension loading errors in the subprocess).
+  // Derive sidecar root from import.meta.url (not process.cwd()) to avoid stripping
+  // a project's node_modules/.bin when the sidecar is started from a project directory.
+  if (process.env.PATH) {
+    const sidecarRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    // Collect sidecar's own .bin and any ancestor node_modules/.bin that might
+    // contain a hoisted pi binary from this sidecar's dependency tree.
+    const sidecarBins = new Set<string>();
+    sidecarBins.add(resolve(join(sidecarRoot, "node_modules", ".bin")));
+    let ancestor = dirname(sidecarRoot);
+    while (true) {
+      const candidate = resolve(join(ancestor, "node_modules", ".bin"));
+      // Only include if the ancestor contains a pi binary
+      const piShim = join(candidate, "pi");
+      try {
+        if (statSync(piShim).isFile()) sidecarBins.add(candidate);
+      } catch (e: any) {
+        if (e?.code && e.code !== "ENOENT") {
+          logger.debug(`[sidecar] PATH_ANCESTOR_CHECK_FAILED: path=${piShim}, error=${e.code}`);
+        }
+      }
+      const parent = dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
+    }
+    const parts = process.env.PATH.split(delimiter);
+    const kept = parts.filter((p) => {
+      if (!p || !isAbsolute(p)) return true;
+      try { return !sidecarBins.has(resolve(p)); } catch { return true; }
+    });
+    const stripped = parts.length - kept.length;
+    if (stripped > 0) {
+      // Only strip if `pi` is still reachable on the remaining PATH.
+      // Check for platform-appropriate executable names (pi, pi.cmd, pi.exe).
+      const piNames = process.platform === "win32"
+        ? ["pi.cmd", "pi.exe", "pi"]
+        : ["pi"];
+      const piReachable = kept.some((dir) => {
+        if (!dir || !isAbsolute(dir)) return false;
+        return piNames.some((name) => {
+          try { return statSync(join(dir, name)).isFile(); } catch { return false; }
+        });
+      });
+      if (piReachable) {
+        process.env.PATH = kept.join(delimiter);
+        logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dirs=${[...sidecarBins].join(";")}`);  // semicolon-separated to avoid breaking key=value format
+      } else {
+        logger.debug(`[sidecar] PATH_FILTER_SKIPPED: dirs=${[...sidecarBins].join(";")}, reason=pi_not_found_elsewhere`);
+      }
+    }
+  }
+
   const PORT = options?.port ?? parseInt(process.env.SIDECAR_PORT || "9100", 10);
   const HOST = options?.host ?? (process.env.DEV_MODE === "true" ? "0.0.0.0" : "127.0.0.1");
 
@@ -239,17 +298,22 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
-      const status = message.includes("not found for provider") ? 400
+      const sanitizedUrl = url.split("?")[0]; // Strip query params before logging
+      const rawStatus = typeof err?.statusCode === "number" && err.statusCode >= 100 && err.statusCode <= 599
+        ? err.statusCode
+        : undefined;
+      const status = rawStatus
+        ?? (message.includes("not found for provider") ? 400
         : message.includes("Model is required") ? 400
         : message.includes("Payload too large") ? 413
         : message.includes("Invalid JSON") ? 400
         : message.includes("is busy") ? 409
         : message.includes("not found") ? 404
-        : 500;
+        : 500);
       if (status === 500) {
-        logger.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms`, err);
+        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`, err);
       } else {
-        logger.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+        logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`);
       }
       sendJson(res, status, { error: message });
     }
