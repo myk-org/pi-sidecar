@@ -7,7 +7,7 @@
  */
 
 import { accessSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -24,7 +24,9 @@ export function resolveExtensionPath(envVar: string, packageName: string, entryF
 
 export function resolveExtensionPathDetailed(envVar: string, packageName: string, entryFile: string): ResolveResult {
   const envPath = process.env[envVar];
-  if (envPath) return { path: envPath };
+  if (envPath) {
+    return { path: isAbsolute(envPath) ? envPath : resolve(envPath) };
+  }
   try {
     // resolve() finds the package wherever npm installed it (hoisted or nested)
     const pkgJson = require.resolve(`${packageName}/package.json`);

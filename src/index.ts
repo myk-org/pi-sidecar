@@ -274,6 +274,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
+      const sanitizedUrl = url.split("?")[0]; // Strip query params before logging
       const rawStatus = typeof err?.statusCode === "number" && err.statusCode >= 100 && err.statusCode <= 599
         ? err.statusCode
         : undefined;
@@ -286,9 +287,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("not found") ? 404
         : 500);
       if (status === 500) {
-        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${url}, status=${status}, duration_ms=${Date.now() - requestStart}`, err);
+        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}`, err);
       } else {
-        logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${url}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`);
+        logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`);
       }
       sendJson(res, status, { error: message });
     }

@@ -41,12 +41,10 @@ describe("subagent extension integration", () => {
     }
   });
 
-  it("rejects session with subagent tool when extension path is empty", async () => {
-    // This tests the validation logic indirectly — when SUBAGENT_EXTENSION resolves
-    // to "" (package not found), and the caller requests tools: ["subagent"],
-    // session creation should throw.
-    // We can't easily test this without mocking the module-level constant,
-    // so we verify the resolveExtensionPath returns "" for a nonexistent package.
+  it("returns empty string for nonexistent package (prerequisite for subagent validation)", async () => {
+    // Verifies resolveExtensionPath returns "" for a missing package.
+    // The runtime validation in SessionStore.create() uses this to reject
+    // sessions requesting tools: ["subagent"] when the extension is unavailable.
     const result = resolveExtensionPath(
       "UNUSED_ENV_" + Date.now(),
       "nonexistent-package-that-will-never-exist-12345",
