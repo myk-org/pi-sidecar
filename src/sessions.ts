@@ -345,7 +345,9 @@ export class SessionStore {
     const tools = options.tools ?? [...DEFAULT_TOOLS];
     // Reject sessions requesting subagent tool when the extension didn't load
     if (tools.includes("subagent") && !subagentLoaded) {
-      throw new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
+      const err = new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
+      (err as any).statusCode = 400;
+      throw err;
     }
     // Include custom tool names in the allowed tools list so the SDK
     // doesn't filter them out via allowedToolNames.

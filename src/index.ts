@@ -270,18 +270,18 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
-      const status = message.includes("not found for provider") ? 400
+      const status = err?.statusCode
+        ?? (message.includes("not found for provider") ? 400
         : message.includes("Model is required") ? 400
-        : message.includes("could not be loaded") ? 400
         : message.includes("Payload too large") ? 413
         : message.includes("Invalid JSON") ? 400
         : message.includes("is busy") ? 409
         : message.includes("not found") ? 404
-        : 500;
+        : 500);
       if (status === 500) {
         logger.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms`, err);
       } else {
-        logger.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+        logger.warn(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
       }
       sendJson(res, status, { error: message });
     }
