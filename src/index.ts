@@ -3,8 +3,9 @@ export { startWatchdog, type WatchdogOptions } from "./watchdog.js";
 export { createHttpToolExecutor, normalizeHttpToolConfig, interpolate, type HttpToolConfig } from "./http-tool-executor.js";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { isAbsolute } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { SessionStore } from "./sessions.js";
 import { startWatchdog, type WatchdogOptions } from "./watchdog.js";
@@ -83,13 +84,16 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   // Strip the sidecar's own node_modules/.bin from PATH so the subagent extension
   // spawns the globally installed `pi` binary, not the local dependency (which may
   // be a different version and cause extension loading errors in the subprocess).
+  // Derive sidecar root from import.meta.url (not process.cwd()) to avoid stripping
+  // a project's node_modules/.bin when the sidecar is started from a project directory.
   if (process.env.PATH) {
-    const sidecarDir = process.cwd();
+    const sidecarRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const sidecarBin = join(sidecarRoot, "node_modules", ".bin");
     const parts = process.env.PATH.split(":"); // Unix-only; sidecar targets Linux/Docker containers
-    const kept = parts.filter((p) => !p.startsWith(sidecarDir + "/node_modules/.bin"));
+    const kept = parts.filter((p) => p !== sidecarBin);
     const stripped = parts.length - kept.length;
     if (stripped > 0) {
-      logger.debug(`[sidecar] Stripped ${stripped} local node_modules/.bin entries from PATH`);
+      logger.debug(`[sidecar] PATH_FILTERED: removed=${stripped}, dir=${sidecarBin}`);
     }
     process.env.PATH = kept.join(":");
   }

@@ -131,9 +131,9 @@ export function resolveExtensionPath(envVar: string, packageName: string, entryF
         }
       }
     } catch (err) {
-      logger.debug(`[sidecar] Could not resolve ${packageName}:`, err);
+      logger.debug(`[sidecar] RESOLVE_FAILED: package=${packageName}, strategy=search_paths`, err);
     }
-    logger.debug(`[sidecar] Could not resolve ${packageName} via require.resolve or search paths, primary error:`, primaryErr);
+    logger.debug(`[sidecar] RESOLVE_FAILED: package=${packageName}, strategy=all`, primaryErr);
     return "";
   }
 }
@@ -316,17 +316,17 @@ export class SessionStore {
       try {
         accessSync(path);
         extensionPaths.push(path);
-        logger.log(`[sidecar] Extension found: ${path}`);
+        logger.log(`[sidecar] EXTENSION_FOUND: label=${label}, path=${path}`);
         return true;
       } catch (err) {
-        logger.warn(`[sidecar] ${label} extension not found at ${path}:`, err);
+        logger.warn(`[sidecar] EXTENSION_NOT_FOUND: label=${label}, path=${path}`, err);
         return false;
       }
     };
     tryAddExtension(ACPX_EXTENSION, "ACPX");
     tryAddExtension(VERTEX_EXTENSION, "Vertex");
     const subagentLoaded = tryAddExtension(SUBAGENT_EXTENSION, "Subagent");
-    logger.log(`[sidecar] Loading ${extensionPaths.length} extensions`);
+    logger.log(`[sidecar] EXTENSIONS_LOADING: count=${extensionPaths.length}`);
 
     // Build custom tools from config — result is cast to any[] for Pi SDK ToolDefinition compatibility
     const customTools: any[] = (options.customTools || []).map((tool) => {

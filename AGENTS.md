@@ -207,7 +207,7 @@ The sidecar's `startSidecar()` in `src/index.ts` applies two fixes to ensure the
 
 1. **`process.argv[1] = ""`** — The subagent extension's `getPiInvocation()` checks `process.argv[1]` — if it exists as a file, it runs `node <that-file> --mode json ...` instead of `pi --mode json ...`. In the sidecar context, `argv[1]` points to the sidecar's own entry script (`src/server.ts` or `dist/server.js`), which would re-run the sidecar. Clearing it forces the fallback to `{ command: "pi", args }`.
 
-2. **PATH filtering** — The sidecar's `node_modules/.bin/` contains a local `pi` binary from its `@earendil-works/pi-coding-agent` dependency, which may be a different version than the globally installed `pi`. If the local version is older, the spawned subprocess will fail with extension loading errors (e.g., missing APIs). The fix strips the sidecar's `node_modules/.bin` from PATH so the globally installed `pi` is used.
+2. **PATH filtering** — The sidecar's `node_modules/.bin/` contains a local `pi` binary from its `@earendil-works/pi-coding-agent` dependency, which may be a different version than the globally installed `pi`. If the local version is older, the spawned subprocess will fail with extension loading errors (e.g., missing APIs). The fix derives the sidecar's install root from `import.meta.url` (not `process.cwd()`) and strips its exact `node_modules/.bin` directory from PATH so the globally installed `pi` is used without affecting project-local CLIs.
 
 ### 9. Extension path resolution with ESM fallback
 
