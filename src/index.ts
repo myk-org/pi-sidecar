@@ -81,7 +81,11 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
     const sidecarRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const sidecarBin = join(sidecarRoot, "node_modules", ".bin");
     const parts = process.env.PATH.split(delimiter);
-    const kept = parts.filter((p) => p !== sidecarBin);
+    const normalizedSidecarBin = resolve(sidecarBin);
+    const kept = parts.filter((p) => {
+      if (!p || !isAbsolute(p)) return true;
+      try { return resolve(p) !== normalizedSidecarBin; } catch { return true; }
+    });
     const stripped = parts.length - kept.length;
     if (stripped > 0) {
       // Only strip if `pi` is still reachable on the remaining PATH
@@ -282,9 +286,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("not found") ? 404
         : 500);
       if (status === 500) {
-        logger.error(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms`, err);
+        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${url}, status=${status}, duration_ms=${Date.now() - requestStart}`, err);
       } else {
-        logger.warn(`[sidecar] ${method} ${url} ${status} ${Date.now() - requestStart}ms error:`, message);
+        logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${url}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`);
       }
       sendJson(res, status, { error: message });
     }
