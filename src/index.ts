@@ -270,7 +270,10 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
-      const status = err?.statusCode
+      const rawStatus = typeof err?.statusCode === "number" && err.statusCode >= 100 && err.statusCode <= 599
+        ? err.statusCode
+        : undefined;
+      const status = rawStatus
         ?? (message.includes("not found for provider") ? 400
         : message.includes("Model is required") ? 400
         : message.includes("Payload too large") ? 413
