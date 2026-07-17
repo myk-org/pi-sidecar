@@ -186,7 +186,7 @@ The HTTP server binds to `127.0.0.1` unless `DEV_MODE=true` (which opens `0.0.0.
 
 ### 5. ACPX model discovery uses `acpx/runtime` library, not CLI
 
-Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library API (`createAcpRuntime` → `ensureSession` → `getStatus`) instead of spawning `acpx --model __list__` as a subprocess and parsing stderr. The library approach is more reliable (no text parsing), provides proper error handling, and returns model IDs with their full bracket-notation options (e.g. `gpt-5.4[context=272k,reasoning=medium]`). Discovery has a 30 s timeout per agent. Enabled via `ACPX_AGENTS`. Models appear under provider `acpx-<agent>` only — not merged or deduped with builtins or `cli-*`.
+Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library API (`createAcpRuntime` → `ensureSession` → `getStatus`) instead of spawning `acpx --model __list__` as a subprocess and parsing stderr. The library approach is more reliable (no text parsing), provides proper error handling, and returns model IDs with their full bracket-notation options (e.g. `gpt-5.4[context=272k,reasoning=medium]`). Discovery has a 30 s timeout per agent. Enabled via `ACPX_AGENTS`. Models appear under provider `acpx-<agent>`. Builtin placeholder models whose base IDs match ACPX discoveries are filtered out (ACPX wins); providers are never merged with `cli-*`.
 
 ### 5b. CLI provider discovery (`cli-*`) via pi-config cli-provider
 
@@ -199,7 +199,7 @@ Parallel to ACPX: set `CLI_AGENTS` (e.g. `cursor` or `claude,gemini,cursor`) to 
 | ACPX | `ACPX_AGENTS` | `acpx-<agent>` | `provider=acpx-cursor`, `model=cursor:…[…]` |
 | CLI | `CLI_AGENTS` | `cli-<agent>` | `provider=cli-cursor`, `model=cursor:composer-2.5` |
 
-`GET /models` returns three disjoint groups (builtins, then acpx, then cli). No cross-source dedup. `cli-*` model ids are CLI `--model` values; `acpx-*` ids use bracket notation — never cross-feed.
+`GET /models` returns three groups (builtins after ACPX base-ID placeholder dedup, then acpx, then cli). No acpx↔cli merge. `cli-*` model ids are CLI `--model` values; `acpx-*` ids use bracket notation — never cross-feed. Listing awaits ModelRuntime init so builtins are not empty during startup races.
 
 Override the extension path with `SIDECAR_CLI_PROVIDER_EXTENSION_PATH` (discover.ts is resolved as a sibling of that entry).
 

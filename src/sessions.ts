@@ -152,12 +152,12 @@ function loadCliDiscoverModule(discoverPath: string): CliDiscoverModule {
  * Model ids are CLI `--model` values (e.g. cursor:composer-2.5), not acpx bracket ids.
  */
 async function discoverCliModels(agent: string): Promise<DiscoveredModel[]> {
-  logger.debug(`[sidecar] CLI discovery starting: agent=${agent}`);
+  logger.debug(`[sidecar] CLI_DISCOVERY_START: agent=${agent}`);
   if (!/^[a-z0-9_-]+$/i.test(agent)) {
     throw new Error(`Invalid agent name: ${agent}`);
   }
   if (!CLI_DISCOVER_MODULE) {
-    logger.warn(`[sidecar] CLI discovery skipped: agent=${agent}, reason=discover module path unresolved`);
+    logger.warn(`[sidecar] CLI_DISCOVERY_SKIPPED: agent=${agent}, reason=discover_module_path_unresolved`);
     return [];
   }
 
@@ -178,7 +178,7 @@ async function discoverCliModels(agent: string): Promise<DiscoveredModel[]> {
     clearTimeout(timer);
     return result;
   } catch (err) {
-    logger.warn(`[sidecar] CLI discovery failed: agent=${agent}`, err);
+    logger.warn(`[sidecar] CLI_DISCOVERY_FAILED: agent=${agent}`, err);
     return [];
   } finally {
     if (timer) clearTimeout(timer);
@@ -258,23 +258,30 @@ export class SessionStore {
       this.runtimeInit = (async () => {
         this.modelRuntime = await ModelRuntime.create();
         this.modelRegistry = new ModelRegistry(this.modelRuntime);
-        logger.debug("[sidecar] ModelRuntime initialized");
+        logger.debug("[sidecar] MODEL_RUNTIME_INITIALIZED:");
       })();
     }
     await this.runtimeInit;
   }
 
-  getModels(): Array<{ id: string; name: string; provider: string }> {
+  /**
+   * List models from all sources. Ensures ModelRuntime is initialized so builtins
+   * are never silently empty during startup races.
+   * ACPX models take precedence over builtin placeholders with the same base ID;
+   * cli-* stays a separate source (no acpx↔cli merge).
+   */
+  async getModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
+    await this.ensureRuntime();
+
     // Providers that require browser OAuth and cannot work in a headless container
     const HEADLESS_EXCLUDED_PROVIDERS = new Set(["github-copilot"]);
 
-    // Keep sources separate: builtins never mixed/deduped with acpx-* or cli-*.
     // Extension providers may leak into ModelRegistry after bootstrap session load —
     // strip them here; callers get those only from explicit ACPX_AGENTS / CLI_AGENTS discovery.
     const isExtensionProvider = (provider: string): boolean =>
       provider.startsWith("acpx-") || provider.startsWith("cli-");
 
-    const builtinModels = (this.modelRegistry?.getAvailable() ?? [])
+    const builtinModels = this.modelRegistry!.getAvailable()
       .filter((m) => !HEADLESS_EXCLUDED_PROVIDERS.has(m.provider) && !isExtensionProvider(m.provider))
       .map((m) => ({
         id: m.id,
@@ -282,12 +289,23 @@ export class SessionStore {
         provider: m.provider,
       }));
 
-    logger.debug(
-      `[sidecar] Models listed: builtin=${builtinModels.length}, acpx=${this.acpxModels.length}, cli=${this.cliModels.length}`,
-    );
+    // Deduplicate: acpx models take priority over builtin placeholders.
+    // Compare by stripping bracket suffixes (e.g. "cursor:default[]" base is "cursor:default").
+    const acpxBaseIds = new Set(this.acpxModels.map((m) => baseModelId(m.id)));
+    const dedupedBuiltins = builtinModels.filter((m) => !acpxBaseIds.has(baseModelId(m.id)));
+    const dedupedCount = builtinModels.length - dedupedBuiltins.length;
+    if (dedupedCount > 0) {
+      logger.debug(
+        `[sidecar] MODELS_DEDUPED: builtin=${builtinModels.length}, acpx=${this.acpxModels.length}, removed=${dedupedCount}, total=${dedupedBuiltins.length + this.acpxModels.length + this.cliModels.length}`,
+      );
+    } else {
+      logger.debug(
+        `[sidecar] MODELS_LISTED: builtin=${dedupedBuiltins.length}, acpx=${this.acpxModels.length}, cli=${this.cliModels.length}`,
+      );
+    }
 
     // Caller selects source via provider: google/… vs acpx-<agent> vs cli-<agent>
-    return [...builtinModels, ...this.acpxModels, ...this.cliModels];
+    return [...dedupedBuiltins, ...this.acpxModels, ...this.cliModels];
   }
 
   /**
@@ -295,7 +313,7 @@ export class SessionStore {
    * Called on startup — /health returns ok only after this finishes.
    */
   async refreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
-    logger.debug(`[sidecar] Starting model discovery...`);
+    logger.debug(`[sidecar] MODEL_DISCOVERY_START:`);
     try {
       await this.ensureRuntime();
 
@@ -308,13 +326,13 @@ export class SessionStore {
         systemPrompt: "bootstrap",
         cwd: "/tmp",
       });
-      logger.log(`[sidecar] Bootstrap session created for extension loading`);
+      logger.info(`[sidecar] BOOTSTRAP_SESSION_CREATED: purpose=extension_loading`);
 
       // Discover acpx models using the extension's library-based discovery
       const acpxAgents = parseAgentList(process.env.ACPX_AGENTS);
       this.acpxModels = [];
       if (acpxAgents.length > 0) {
-        logger.log(`[sidecar] Discovering models for ACPX agents: ${acpxAgents.join(", ")}`);
+        logger.info(`[sidecar] ACPX_DISCOVERY_START: agents=${acpxAgents.join(",")}`);
         const results = await Promise.allSettled(
           acpxAgents.map((agent) => discoverAcpxModels(agent)),
         );
@@ -325,11 +343,11 @@ export class SessionStore {
           const agent = acpxAgents[i];
           if (result.status === "fulfilled" && result.value.length > 0) {
             discoveredModels.push(...result.value);
-            logger.log(`[sidecar] acpx-${agent}: ${result.value.length} models discovered`);
+            logger.info(`[sidecar] ACPX_DISCOVERY_OK: agent=${agent}, count=${result.value.length}`);
           } else if (result.status === "rejected") {
-            logger.error(`[sidecar] acpx-${agent}: discovery failed:`, result.reason);
+            logger.error(`[sidecar] ACPX_DISCOVERY_FAILED: agent=${agent}`, result.reason);
           } else {
-            logger.warn(`[sidecar] acpx-${agent}: no models discovered`);
+            logger.warn(`[sidecar] ACPX_DISCOVERY_EMPTY: agent=${agent}`);
           }
         }
         this.acpxModels = discoveredModels;
@@ -339,7 +357,7 @@ export class SessionStore {
       const cliAgents = parseAgentList(process.env.CLI_AGENTS);
       this.cliModels = [];
       if (cliAgents.length > 0) {
-        logger.log(`[sidecar] Discovering models for CLI agents: ${cliAgents.join(", ")}`);
+        logger.info(`[sidecar] CLI_DISCOVERY_START: agents=${cliAgents.join(",")}`);
         const results = await Promise.allSettled(
           cliAgents.map((agent) => discoverCliModels(agent)),
         );
@@ -350,11 +368,11 @@ export class SessionStore {
           const agent = cliAgents[i];
           if (result.status === "fulfilled" && result.value.length > 0) {
             discoveredModels.push(...result.value);
-            logger.log(`[sidecar] cli-${agent}: ${result.value.length} models discovered`);
+            logger.info(`[sidecar] CLI_DISCOVERY_OK: agent=${agent}, count=${result.value.length}`);
           } else if (result.status === "rejected") {
-            logger.error(`[sidecar] cli-${agent}: discovery failed:`, result.reason);
+            logger.error(`[sidecar] CLI_DISCOVERY_FAILED: agent=${agent}`, result.reason);
           } else {
-            logger.warn(`[sidecar] cli-${agent}: no models discovered`);
+            logger.warn(`[sidecar] CLI_DISCOVERY_EMPTY: agent=${agent}`);
           }
         }
         this.cliModels = discoveredModels;
@@ -365,12 +383,13 @@ export class SessionStore {
 
       this._ready = true;
       this._discoveryError = null;
-      logger.log(`[sidecar] Model discovery complete: ${this.getModels().length} models available`);
-      return this.getModels();
+      const models = await this.getModels();
+      logger.info(`[sidecar] MODEL_DISCOVERY_COMPLETE: count=${models.length}`);
+      return models;
     } catch (err: any) {
       this._discoveryError = err?.message || "Unknown discovery error";
       this._ready = true;  // Mark as ready but with error — don't block health forever
-      logger.error(`[sidecar] Model discovery failed:`, err);
+      logger.error(`[sidecar] MODEL_DISCOVERY_FAILED:`, err);
       throw err;  // Rethrow so callers can handle (startup catches, POST /models/refresh returns 500)
     }
   }
