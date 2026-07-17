@@ -6,14 +6,15 @@ import { dirname, join } from "node:path";
 
 import {
   type AgentSession,
-  AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
   ModelRegistry,
+  ModelRuntime,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { getModel } from "@earendil-works/pi-ai";
+import { getModel } from "@earendil-works/pi-ai/compat";
+import { createJiti } from "jiti";
 
 import { logger } from "./logger.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig } from "./http-tool-executor.js";
@@ -112,9 +113,85 @@ function resolveAndLog(envVar: string, packageName: string, entryFile: string): 
   return result.path;
 }
 
+type DiscoveredModel = { id: string; name: string; provider: string };
+
+type CliDiscoverModule = {
+  discoverCliModels: (agent: string) => Promise<DiscoveredModel[]>;
+};
+
+let cliDiscoverModule: CliDiscoverModule | null = null;
+
 const ACPX_EXTENSION = resolveAndLog("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
+const CLI_PROVIDER_EXTENSION = resolveAndLog("SIDECAR_CLI_PROVIDER_EXTENSION_PATH", "pi-orchestrator-config", "extensions/cli-provider/index.ts");
+/** discover.ts lives next to the cli-provider entry (same override dir when SIDECAR_CLI_PROVIDER_EXTENSION_PATH is set). */
+const CLI_DISCOVER_MODULE = CLI_PROVIDER_EXTENSION
+  ? join(dirname(CLI_PROVIDER_EXTENSION), "discover.ts")
+  : "";
 const VERTEX_EXTENSION = resolveAndLog("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
 const SUBAGENT_EXTENSION = resolveAndLog("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
+
+/**
+ * Load cli-provider's discover.ts via jiti (TypeScript at runtime).
+ * Uses the package's exported discoverCliModels — same API designed for sidecar registries.
+ */
+function loadCliDiscoverModule(discoverPath: string): CliDiscoverModule {
+  if (cliDiscoverModule) return cliDiscoverModule;
+  const jiti = createJiti(import.meta.url);
+  const mod = jiti(discoverPath) as CliDiscoverModule | { default: CliDiscoverModule };
+  cliDiscoverModule = "discoverCliModels" in mod && typeof mod.discoverCliModels === "function"
+    ? mod
+    : (mod as { default: CliDiscoverModule }).default;
+  if (!cliDiscoverModule?.discoverCliModels) {
+    throw new Error(`cli-provider discover module missing discoverCliModels at ${discoverPath}`);
+  }
+  return cliDiscoverModule;
+}
+
+/**
+ * Discover models from a CLI agent via pi-config's cli-provider discover API.
+ * Model ids are CLI `--model` values (e.g. cursor:composer-2.5), not acpx bracket ids.
+ */
+async function discoverCliModels(agent: string): Promise<DiscoveredModel[]> {
+  logger.debug(`[sidecar] CLI_DISCOVERY_START: agent=${agent}`);
+  if (!/^[a-z0-9_-]+$/i.test(agent)) {
+    throw new Error(`Invalid agent name: ${agent}`);
+  }
+  if (!CLI_DISCOVER_MODULE) {
+    logger.warn(`[sidecar] CLI_DISCOVERY_SKIPPED: agent=${agent}, reason=discover_module_path_unresolved`);
+    return [];
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const discovery = (async () => {
+      const mod = loadCliDiscoverModule(CLI_DISCOVER_MODULE);
+      return await mod.discoverCliModels(agent);
+    })();
+
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`cli discovery for ${agent} timed out after ${DISCOVERY_TIMEOUT_MS / 1000}s`));
+      }, DISCOVERY_TIMEOUT_MS);
+    });
+
+    const result = await Promise.race([discovery, timeout]);
+    clearTimeout(timer);
+    return result;
+  } catch (err) {
+    logger.warn(`[sidecar] CLI_DISCOVERY_FAILED: agent=${agent}`, err);
+    return [];
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Parse comma-separated agent env vars (ACPX_AGENTS / CLI_AGENTS). */
+function parseAgentList(envValue: string | undefined): string[] {
+  return (envValue || "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0);
+}
 
 export const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
 
@@ -153,11 +230,14 @@ export interface CreateSessionOptions {
 
 export class SessionStore {
   private sessions = new Map<string, SessionEntry>();
-  private authStorage = AuthStorage.create();
-  private modelRegistry = ModelRegistry.create(this.authStorage);
+  /** Shared ModelRuntime (0.80+); replaces AuthStorage + ModelRegistry.create. */
+  private modelRuntime: ModelRuntime | undefined;
+  private modelRegistry: ModelRegistry | undefined;
+  private runtimeInit: Promise<void> | undefined;
   private _ready = false;
   private _discoveryError: string | null = null;
-  private acpxModels: Array<{ id: string; name: string; provider: string }> = [];
+  private acpxModels: DiscoveredModel[] = [];
+  private cliModels: DiscoveredModel[] = [];
 
   get ready(): boolean {
     return this._ready;
@@ -171,12 +251,38 @@ export class SessionStore {
     return this.sessions.size;
   }
 
-  getModels(): Array<{ id: string; name: string; provider: string }> {
+  /** Lazily create shared ModelRuntime + ModelRegistry facade (SDK 0.80). */
+  private async ensureRuntime(): Promise<void> {
+    if (this.modelRuntime && this.modelRegistry) return;
+    if (!this.runtimeInit) {
+      this.runtimeInit = (async () => {
+        this.modelRuntime = await ModelRuntime.create();
+        this.modelRegistry = new ModelRegistry(this.modelRuntime);
+        logger.debug("[sidecar] MODEL_RUNTIME_INITIALIZED:");
+      })();
+    }
+    await this.runtimeInit;
+  }
+
+  /**
+   * List models from all sources. Ensures ModelRuntime is initialized so builtins
+   * are never silently empty during startup races.
+   * ACPX models take precedence over builtin placeholders with the same base ID;
+   * cli-* stays a separate source (no acpx↔cli merge).
+   */
+  async getModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
+    await this.ensureRuntime();
+
     // Providers that require browser OAuth and cannot work in a headless container
     const HEADLESS_EXCLUDED_PROVIDERS = new Set(["github-copilot"]);
 
-    const builtinModels = this.modelRegistry.getAvailable()
-      .filter((m) => !HEADLESS_EXCLUDED_PROVIDERS.has(m.provider))
+    // Extension providers may leak into ModelRegistry after bootstrap session load —
+    // strip them here; callers get those only from explicit ACPX_AGENTS / CLI_AGENTS discovery.
+    const isExtensionProvider = (provider: string): boolean =>
+      provider.startsWith("acpx-") || provider.startsWith("cli-");
+
+    const builtinModels = this.modelRegistry!.getAvailable()
+      .filter((m) => !HEADLESS_EXCLUDED_PROVIDERS.has(m.provider) && !isExtensionProvider(m.provider))
       .map((m) => ({
         id: m.id,
         name: m.name,
@@ -189,10 +295,17 @@ export class SessionStore {
     const dedupedBuiltins = builtinModels.filter((m) => !acpxBaseIds.has(baseModelId(m.id)));
     const dedupedCount = builtinModels.length - dedupedBuiltins.length;
     if (dedupedCount > 0) {
-      logger.debug(`[sidecar] Models deduped: builtin=${builtinModels.length}, acpx=${this.acpxModels.length}, removed=${dedupedCount}, total=${dedupedBuiltins.length + this.acpxModels.length}`);
+      logger.debug(
+        `[sidecar] MODELS_DEDUPED: builtin=${builtinModels.length}, acpx=${this.acpxModels.length}, removed=${dedupedCount}, total=${dedupedBuiltins.length + this.acpxModels.length + this.cliModels.length}`,
+      );
+    } else {
+      logger.debug(
+        `[sidecar] MODELS_LISTED: builtin=${dedupedBuiltins.length}, acpx=${this.acpxModels.length}, cli=${this.cliModels.length}`,
+      );
     }
 
-    return [...dedupedBuiltins, ...this.acpxModels];
+    // Caller selects source via provider: google/… vs acpx-<agent> vs cli-<agent>
+    return [...dedupedBuiltins, ...this.acpxModels, ...this.cliModels];
   }
 
   /**
@@ -200,8 +313,10 @@ export class SessionStore {
    * Called on startup — /health returns ok only after this finishes.
    */
   async refreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
-    logger.debug(`[sidecar] Starting model discovery...`);
+    logger.debug(`[sidecar] MODEL_DISCOVERY_START:`);
     try {
+      await this.ensureRuntime();
+
       // Create a bootstrap session to trigger extension loading.
       // Extensions like vertex-claude register models synchronously on load.
       // The session is kept alive (disposed at cleanup) to maintain extension state.
@@ -211,34 +326,56 @@ export class SessionStore {
         systemPrompt: "bootstrap",
         cwd: "/tmp",
       });
-      logger.log(`[sidecar] Bootstrap session created for extension loading`);
+      logger.info(`[sidecar] BOOTSTRAP_SESSION_CREATED: purpose=extension_loading`);
 
       // Discover acpx models using the extension's library-based discovery
-      const agents = (process.env.ACPX_AGENTS || "")
-        .split(",")
-        .map((a) => a.trim())
-        .filter((a) => a.length > 0);
-
-      if (agents.length > 0) {
-        logger.log(`[sidecar] Discovering models for ACPX agents: ${agents.join(", ")}`);
+      const acpxAgents = parseAgentList(process.env.ACPX_AGENTS);
+      this.acpxModels = [];
+      if (acpxAgents.length > 0) {
+        logger.info(`[sidecar] ACPX_DISCOVERY_START: agents=${acpxAgents.join(",")}`);
         const results = await Promise.allSettled(
-          agents.map((agent) => discoverAcpxModels(agent)),
+          acpxAgents.map((agent) => discoverAcpxModels(agent)),
         );
 
-        const discoveredModels: Array<{ id: string; name: string; provider: string }> = [];
+        const discoveredModels: DiscoveredModel[] = [];
         for (let i = 0; i < results.length; i++) {
           const result = results[i];
-          const agent = agents[i];
+          const agent = acpxAgents[i];
           if (result.status === "fulfilled" && result.value.length > 0) {
             discoveredModels.push(...result.value);
-            logger.log(`[sidecar] acpx-${agent}: ${result.value.length} models discovered`);
+            logger.info(`[sidecar] ACPX_DISCOVERY_OK: agent=${agent}, count=${result.value.length}`);
           } else if (result.status === "rejected") {
-            logger.error(`[sidecar] acpx-${agent}: discovery failed:`, result.reason);
+            logger.error(`[sidecar] ACPX_DISCOVERY_FAILED: agent=${agent}`, result.reason);
           } else {
-            logger.warn(`[sidecar] acpx-${agent}: no models discovered`);
+            logger.warn(`[sidecar] ACPX_DISCOVERY_EMPTY: agent=${agent}`);
           }
         }
         this.acpxModels = discoveredModels;
+      }
+
+      // Discover cli-* models via pi-config cli-provider (CLI_AGENTS)
+      const cliAgents = parseAgentList(process.env.CLI_AGENTS);
+      this.cliModels = [];
+      if (cliAgents.length > 0) {
+        logger.info(`[sidecar] CLI_DISCOVERY_START: agents=${cliAgents.join(",")}`);
+        const results = await Promise.allSettled(
+          cliAgents.map((agent) => discoverCliModels(agent)),
+        );
+
+        const discoveredModels: DiscoveredModel[] = [];
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i];
+          const agent = cliAgents[i];
+          if (result.status === "fulfilled" && result.value.length > 0) {
+            discoveredModels.push(...result.value);
+            logger.info(`[sidecar] CLI_DISCOVERY_OK: agent=${agent}, count=${result.value.length}`);
+          } else if (result.status === "rejected") {
+            logger.error(`[sidecar] CLI_DISCOVERY_FAILED: agent=${agent}`, result.reason);
+          } else {
+            logger.warn(`[sidecar] CLI_DISCOVERY_EMPTY: agent=${agent}`);
+          }
+        }
+        this.cliModels = discoveredModels;
       }
 
       // Clean up bootstrap session
@@ -246,12 +383,13 @@ export class SessionStore {
 
       this._ready = true;
       this._discoveryError = null;
-      logger.log(`[sidecar] Model discovery complete: ${this.getModels().length} models available`);
-      return this.getModels();
+      const models = await this.getModels();
+      logger.info(`[sidecar] MODEL_DISCOVERY_COMPLETE: count=${models.length}`);
+      return models;
     } catch (err: any) {
       this._discoveryError = err?.message || "Unknown discovery error";
       this._ready = true;  // Mark as ready but with error — don't block health forever
-      logger.error(`[sidecar] Model discovery failed:`, err);
+      logger.error(`[sidecar] MODEL_DISCOVERY_FAILED:`, err);
       throw err;  // Rethrow so callers can handle (startup catches, POST /models/refresh returns 500)
     }
   }
@@ -263,25 +401,52 @@ export class SessionStore {
       throw new Error(`Model is required. Use GET /models to list available models.`);
     }
 
-    // Find the model
-    let model = this.modelRegistry.find(options.provider, options.model) || undefined;
-    if (!model) {
-      // Try built-in models
-      model = getModel(options.provider as any, options.model) || undefined;
-    }
+    await this.ensureRuntime();
 
-    if (!model) {
-      // Check acpx models (discovered at runtime via extension API)
-      const isAcpxModel = this.acpxModels.some((m) => m.id === options.model);
-      if (!isAcpxModel) {
-        throw new Error(`Model '${options.model}' not found for provider '${options.provider}'. Use GET /models to list available models.`);
+    const isAcpxProvider = options.provider.startsWith("acpx-");
+    const isCliProvider = options.provider.startsWith("cli-");
+
+    // Extension sources are selected explicitly via provider prefix.
+    // Do not resolve them from ModelRegistry (bootstrap may register extras from global settings).
+    let model: any;
+    if (isAcpxProvider) {
+      const match = this.acpxModels.some(
+        (m) => m.id === options.model && m.provider === options.provider,
+      );
+      if (!match) {
+        throw new Error(
+          `Model '${options.model}' not found for provider '${options.provider}'. ` +
+            `Set ACPX_AGENTS and use GET /models to list acpx-* models.`,
+        );
       }
-      // acpx model found — proceed without a registry model object
-      // (createAgentSession will resolve it via the acpx extension)
+      // Leave model undefined — createAgentSession resolves via acpx-provider extension
+    } else if (isCliProvider) {
+      const match = this.cliModels.some(
+        (m) => m.id === options.model && m.provider === options.provider,
+      );
+      if (!match) {
+        throw new Error(
+          `Model '${options.model}' not found for provider '${options.provider}'. ` +
+            `Set CLI_AGENTS and use GET /models to list cli-* models.`,
+        );
+      }
+      // Leave model undefined — createAgentSession resolves via cli-provider extension
+    } else {
+      model = this.modelRegistry!.find(options.provider, options.model)
+        || this.modelRuntime!.getModel(options.provider, options.model)
+        || getModel(options.provider as any, options.model)
+        || undefined;
+      if (!model) {
+        throw new Error(
+          `Model '${options.model}' not found for provider '${options.provider}'. Use GET /models to list available models.`,
+        );
+      }
     }
 
-    const isAcpx = !model && this.acpxModels.some((m) => m.id === options.model);
-    logger.debug(`[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, registryMatch=${!!model}, acpxMatch=${isAcpx}`);
+    logger.debug(
+      `[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, ` +
+        `registryMatch=${!!model}, acpxSource=${isAcpxProvider}, cliSource=${isCliProvider}`,
+    );
 
     // Build extension paths (only include existing files)
     const extensionPaths: string[] = [];
@@ -306,6 +471,7 @@ export class SessionStore {
       }
     };
     tryAddExtension(ACPX_EXTENSION, "ACPX");
+    tryAddExtension(CLI_PROVIDER_EXTENSION, "CLI");
     tryAddExtension(VERTEX_EXTENSION, "Vertex");
     const subagentLoaded = tryAddExtension(SUBAGENT_EXTENSION, "Subagent");
     logger.log(`[sidecar] EXTENSIONS_LOADING: count=${extensionPaths.length}`);
@@ -384,8 +550,7 @@ export class SessionStore {
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(),
       settingsManager,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
+      modelRuntime: this.modelRuntime!,
     });
 
     this.sessions.set(id, { session, lastActivity: Date.now(), inFlight: false });

@@ -401,6 +401,12 @@ describe("resolveExtensionPath", () => {
     assert.ok(result.replaceAll("\\", "/").endsWith("extensions/acpx-provider/index.ts"), `path should end with entry file, got: ${result}`);
   });
 
+  it("resolves cli-provider extension from pi-orchestrator-config", () => {
+    const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "pi-orchestrator-config", "extensions/cli-provider/index.ts");
+    assert.ok(result.length > 0, "should resolve to a non-empty path");
+    assert.ok(result.replaceAll("\\", "/").endsWith("extensions/cli-provider/index.ts"), `path should end with entry file, got: ${result}`);
+  });
+
   it("resolves ESM-only package via search-path fallback (@earendil-works/pi-coding-agent)", () => {
     const result = resolveExtensionPath("UNUSED_ENV_" + Date.now(), "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
     assert.ok(result.length > 0, "should resolve to a non-empty path");

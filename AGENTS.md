@@ -186,7 +186,22 @@ The HTTP server binds to `127.0.0.1` unless `DEV_MODE=true` (which opens `0.0.0.
 
 ### 5. ACPX model discovery uses `acpx/runtime` library, not CLI
 
-Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library API (`createAcpRuntime` → `ensureSession` → `getStatus`) instead of spawning `acpx --model __list__` as a subprocess and parsing stderr. The library approach is more reliable (no text parsing), provides proper error handling, and returns model IDs with their full bracket-notation options (e.g. `gpt-5.4[context=272k,reasoning=medium]`). Discovery has a 30 s timeout per agent. The `getModels()` method deduplicates builtin placeholder models against discovered ACPX models by comparing base IDs (stripping bracket suffixes).
+Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library API (`createAcpRuntime` → `ensureSession` → `getStatus`) instead of spawning `acpx --model __list__` as a subprocess and parsing stderr. The library approach is more reliable (no text parsing), provides proper error handling, and returns model IDs with their full bracket-notation options (e.g. `gpt-5.4[context=272k,reasoning=medium]`). Discovery has a 30 s timeout per agent. Enabled via `ACPX_AGENTS`. Models appear under provider `acpx-<agent>`. Builtin placeholder models whose base IDs match ACPX discoveries are filtered out (ACPX wins); providers are never merged with `cli-*`.
+
+### 5b. CLI provider discovery (`cli-*`) via pi-config cli-provider
+
+Parallel to ACPX: set `CLI_AGENTS` (e.g. `cursor` or `claude,gemini,cursor`) to discover and expose `cli-*` providers. Sidecar loads `extensions/cli-provider/index.ts` from `pi-orchestrator-config` (≥ v3.14.1) and lists models via the extension's exported `discoverCliModels()` (loaded at runtime with jiti).
+
+**Caller selects source via `provider`:**
+| Source | Env | Provider id | Example |
+|--------|-----|-------------|---------|
+| Builtin / API | — | `google`, `litellm`, … | `provider=google`, `model=gemini-2.5-flash` |
+| ACPX | `ACPX_AGENTS` | `acpx-<agent>` | `provider=acpx-cursor`, `model=cursor:…[…]` |
+| CLI | `CLI_AGENTS` | `cli-<agent>` | `provider=cli-cursor`, `model=cursor:composer-2.5` |
+
+`GET /models` returns three groups (builtins after ACPX base-ID placeholder dedup, then acpx, then cli). No acpx↔cli merge. `cli-*` model ids are CLI `--model` values; `acpx-*` ids use bracket notation — never cross-feed. Listing awaits ModelRuntime init so builtins are not empty during startup races.
+
+Override the extension path with `SIDECAR_CLI_PROVIDER_EXTENSION_PATH` (discover.ts is resolved as a sibling of that entry).
 
 ### 6. Resource loading via `cwd` and `agent_dir`
 
@@ -196,7 +211,7 @@ The Pi SDK's `DefaultResourceLoader` loads project-level resources from `{cwd}/.
 
 The `subagent` tool delegates tasks to specialized agents by spawning isolated `pi --mode json` subprocesses. It supports single, parallel (max 8, 4 concurrent), and chain modes with `{previous}` placeholder interpolation.
 
-The tool is **not a built-in** — it ships as a Pi extension at `@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts` and is loaded via `additionalExtensionPaths` (same mechanism as ACPX and Vertex extensions). The SDK's jiti-based extension loader transpiles it at runtime and resolves all imports (`@earendil-works/pi-tui`, `typebox`, etc.) via virtual modules. The TUI rendering methods (`renderCall`/`renderResult`) are optional and never called in headless mode.
+The tool is **not a built-in** — it ships as a Pi extension at `@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts` and is loaded via `additionalExtensionPaths` (same mechanism as ACPX, CLI, and Vertex extensions). The SDK's jiti-based extension loader transpiles it at runtime and resolves all imports (`@earendil-works/pi-tui`, `typebox`, etc.) via virtual modules. The TUI rendering methods (`renderCall`/`renderResult`) are optional and never called in headless mode.
 
 The extension is loaded for all sessions. Callers make the tool available to the AI by including `"subagent"` in the `tools` array at session creation. Session creation rejects with a 400 error if `"subagent"` is in the `tools` array but the extension could not be loaded. Agents are discovered from markdown files with YAML frontmatter in `{agentDir}/agents/` (user-level) and `{cwd}/.pi/agents/` (project-level, requires `agentScope: "both"`).
 
@@ -212,7 +227,7 @@ The sidecar applies two fixes to ensure the subagent extension spawns `pi` corre
 
 ### 9. Extension path resolution with ESM fallback
 
-`resolveExtensionPath()` locates extension entry files by finding a package's root directory. The primary strategy uses `require.resolve('pkg/package.json')`, which works for CJS packages. For ESM-only packages with strict `exports` (like `@earendil-works/pi-coding-agent`), this throws `ERR_PACKAGE_PATH_NOT_EXPORTED`. The fallback uses `require.resolve.paths()` to get `node_modules` search directories, then walks them to find `package.json` without triggering exports validation. All three extensions (ACPX, Vertex, Subagent) support path overrides via `SIDECAR_ACPX_EXTENSION_PATH`, `SIDECAR_VERTEX_EXTENSION_PATH`, and `SIDECAR_SUBAGENT_EXTENSION_PATH` environment variables.
+`resolveExtensionPath()` locates extension entry files by finding a package's root directory. The primary strategy uses `require.resolve('pkg/package.json')`, which works for CJS packages. For ESM-only packages with strict `exports` (like `@earendil-works/pi-coding-agent`), this throws `ERR_PACKAGE_PATH_NOT_EXPORTED`. The fallback uses `require.resolve.paths()` to get `node_modules` search directories, then walks them to find `package.json` without triggering exports validation. Extensions (ACPX, CLI provider, Vertex, Subagent) support path overrides via `SIDECAR_ACPX_EXTENSION_PATH`, `SIDECAR_CLI_PROVIDER_EXTENSION_PATH`, `SIDECAR_VERTEX_EXTENSION_PATH`, and `SIDECAR_SUBAGENT_EXTENSION_PATH` environment variables.
 
 ## Generated Documentation
 

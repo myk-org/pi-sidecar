@@ -160,7 +160,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
 
       // GET /models
       if (method === "GET" && url === "/models") {
-        const models = store.getModels();
+        const models = await store.getModels();
         logger.debug(`[sidecar] GET /models 200 ${Date.now() - requestStart}ms: count=${models.length}`);
         sendJson(res, 200, { models });
         return;
