@@ -36,6 +36,7 @@ pi-sidecar/                        (repo root = npm package root)
 │   │   ├── route-match.test.ts    # URL route matching tests
 │   │   ├── subagent-integration.test.ts # Subagent extension resolution and env var override tests
 │   │   ├── tools-config.test.ts   # DEFAULT_TOOLS, tools config, and agent_dir validation tests
+│   │   ├── dependency-overrides.test.ts # package.json overrides vs lockfile resolution checks
 │   │   └── watchdog.test.ts       # Health check watchdog tests
 │   └── test_python/                # Python client tests
 │       ├── conftest.py            # Shared test fixtures
