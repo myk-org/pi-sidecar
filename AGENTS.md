@@ -190,7 +190,7 @@ Model discovery for ACPX agents (e.g., Cursor) uses the `acpx/runtime` library A
 
 ### 5b. CLI provider discovery (`cli-*`) via pi-config cli-provider
 
-Parallel to ACPX: set `CLI_AGENTS` (e.g. `cursor` or `claude,gemini,cursor`) to discover and expose `cli-*` providers. Sidecar loads `extensions/cli-provider/index.ts` from `pi-orchestrator-config` (≥ v3.14.1) and lists models via the extension's exported `discoverCliModels()` (loaded at runtime with jiti).
+Parallel to ACPX: set `CLI_AGENTS` (e.g. `cursor` or `claude,gemini,cursor`) to discover and expose `cli-*` providers. Sidecar loads `extensions/cli-provider/index.ts` from `pi-orchestrator-config` (≥ v3.15.2) and lists models via the extension's exported `discoverCliModels()` (loaded at runtime with jiti).
 
 **Caller selects source via `provider`:**
 | Source | Env | Provider id | Example |
@@ -228,6 +228,15 @@ The sidecar applies two fixes to ensure the subagent extension spawns `pi` corre
 ### 9. Extension path resolution with ESM fallback
 
 `resolveExtensionPath()` locates extension entry files by finding a package's root directory. The primary strategy uses `require.resolve('pkg/package.json')`, which works for CJS packages. For ESM-only packages with strict `exports` (like `@earendil-works/pi-coding-agent`), this throws `ERR_PACKAGE_PATH_NOT_EXPORTED`. The fallback uses `require.resolve.paths()` to get `node_modules` search directories, then walks them to find `package.json` without triggering exports validation. Extensions (ACPX, CLI provider, Vertex, Subagent) support path overrides via `SIDECAR_ACPX_EXTENSION_PATH`, `SIDECAR_CLI_PROVIDER_EXTENSION_PATH`, `SIDECAR_VERTEX_EXTENSION_PATH`, and `SIDECAR_SUBAGENT_EXTENSION_PATH` environment variables.
+
+### 10. Root `package.json` overrides pin CVE floors
+
+Sidecar root `package.json` `overrides` pin CVE floors:
+
+- `brace-expansion` `>=5.0.7 <6` — sidecar-owned (from `pi-coding-agent`)
+- `adm-zip` `0.6.0` and `protobufjs` `7.6.5` — root mirrors of `pi-orchestrator-config` ≥3.15.2 pins
+
+npm only honors overrides from the **root** `package.json`; overrides inside `pi-orchestrator-config` do not apply to the sidecar install tree. Do not use nested `onnxruntime-node` stubs — root overrides are the supported approach.
 
 ## Generated Documentation
 
