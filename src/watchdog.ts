@@ -31,7 +31,7 @@ function sanitizeUrl(raw: string): string {
 
 export function startWatchdog(
   healthUrl: string,
-  onDead: () => void,
+  onDead: () => void | Promise<void>,
   options?: WatchdogOptions,
 ): () => void {
   const intervalMs = Math.max(options?.intervalMs ?? DEFAULT_INTERVAL_MS, 1000);
@@ -84,7 +84,7 @@ export function startWatchdog(
         dead = true;
         logger.error(`[watchdog] Max failures reached: failures=${consecutiveFailures}, threshold=${maxFailures}, triggering shutdown`);
         try {
-          onDead();
+          await onDead();
         } catch (err) {
           logger.error("[watchdog] onDead callback threw:", err);
         }

@@ -5,6 +5,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from simple_logger.logger import get_logger
@@ -150,6 +151,44 @@ class SidecarClient:
         models = resp.json().get("models", [])
         logger.info("Model refresh complete: %d models available", len(models))
         return models
+
+    async def get_model_provider_status(self, provider: str) -> dict:
+        """Get registration, model count, and auth status for a single provider.
+
+        Args:
+            provider: Sidecar provider id, e.g. ``"google"``, ``"acpx-cursor"``,
+                or ``"cli-cursor"``. URL-encoded before being placed in the path
+                so ids containing reserved characters (e.g. ``/``) can't alter
+                the request path.
+
+        Returns:
+            A dict mirroring the sidecar's ``GET /models/:provider/status``
+            response (see ``ProviderStatus`` in ``src/sessions.ts``):
+
+            - ``provider`` (str): the provider id that was queried.
+            - ``registered`` (bool): whether the provider is currently
+              registered on the shared ``ModelRuntime``.
+            - ``modelCount`` (int): number of models known for this provider
+              (from the acpx/cli snapshot cache for ``acpx-*``/``cli-*``
+              providers, or the live catalog for builtins).
+            - ``authStatus`` (dict | None): result of
+              ``ModelRuntime.getProviderAuthStatus()``, or ``None`` if that
+              call raised.
+            - ``authCheck`` (dict | None): result of
+              ``ModelRuntime.checkAuth()``, or ``None`` if unregistered or
+              that call raised.
+
+        Raises:
+            httpx.HTTPStatusError: If the provider is not registered (HTTP
+                404 — response body still includes the status fields) or on
+                any other non-2xx response.
+        """
+        logger.debug("Fetching provider status: provider=%s", provider)
+        resp = await self._client.get(f"/models/{quote(provider, safe='')}/status")
+        resp.raise_for_status()
+        status = resp.json()
+        logger.debug("Provider status fetched: provider=%s, status=%s", provider, status)
+        return status
 
     async def create_session(
         self,

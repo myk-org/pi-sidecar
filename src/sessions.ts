@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 
 import {
   type AgentSession,
-  createAgentSession,
+  type AgentSessionRuntime,
+  type CreateAgentSessionRuntimeFactory,
   DefaultResourceLoader,
   ModelRegistry,
   ModelRuntime,
   SessionManager,
   SettingsManager,
+  createAgentSession,
+  createAgentSessionFromServices,
+  createAgentSessionRuntime,
+  createAgentSessionServices,
 } from "@earendil-works/pi-coding-agent";
 import { getModel } from "@earendil-works/pi-ai/compat";
 import { createJiti } from "jiti";
@@ -19,7 +21,6 @@ import { createJiti } from "jiti";
 import { logger } from "./logger.js";
 import { createHttpToolExecutor, normalizeHttpToolConfig } from "./http-tool-executor.js";
 import { resolveExtensionPathDetailed } from "./resolve-extension-path.js";
-
 
 /** Strip bracket suffixes from model IDs for display or comparison (e.g. "cursor:default[]" → "cursor:default"). */
 function baseModelId(id: string): string {
@@ -30,80 +31,12 @@ function baseModelId(id: string): string {
 const DISCOVERY_TIMEOUT_MS = 30_000;
 
 /**
- * Discover models from an acpx agent using the acpx/runtime library.
- * Creates a temporary runtime, queries available models via getStatus(),
- * then cleans up. Based on the extension's discoverAcpxModels but inlined
- * here to avoid importing the extension module (which has incompatible
- * top-level imports outside Pi's extension loader).
+ * Providers that require interactive browser OAuth and therefore cannot work
+ * in this headless container. Excluded from getModels()'s catalog and from
+ * getProviderStatus()'s reported model count (see getProviderStatus()) —
+ * hoisted to module scope so both call sites share one definition.
  */
-async function discoverAcpxModels(agent: string): Promise<Array<{ id: string; name: string; provider: string }>> {
-  logger.debug(`[sidecar] Discovery starting: agent=${agent}`);
-  if (!/^[a-z0-9_-]+$/i.test(agent)) {
-    throw new Error(`Invalid agent name: ${agent}`);
-  }
-
-  const { createAcpRuntime, createFileSessionStore, createAgentRegistry } = await import("acpx/runtime");
-
-  const uid = randomUUID().slice(0, 8);
-  const stateDir = join(homedir(), ".acpx", `discover-${process.pid}-${uid}`);
-  const runtime = createAcpRuntime({
-    cwd: process.cwd(),
-    sessionStore: createFileSessionStore({ stateDir }),
-    agentRegistry: createAgentRegistry(),
-    permissionMode: "deny-all",
-  });
-
-  let handle: Awaited<ReturnType<typeof runtime.ensureSession>> | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-  try {
-    const discovery = (async () => {
-      handle = await runtime.ensureSession({
-        sessionKey: `discover-${agent}-${uid}`,
-        agent,
-        mode: "oneshot",
-        cwd: process.cwd(),
-      });
-
-      const status = await runtime.getStatus({ handle });
-      const modelIds: string[] = status.models?.availableModelIds || [];
-
-      return modelIds.map((modelId: string) => ({
-        id: `${agent}:${modelId}`,
-        name: `${baseModelId(modelId).replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())} (${agent})`,
-        provider: `acpx-${agent}`,
-      }));
-    })();
-
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        timedOut = true;
-        reject(new Error(`acpx discovery for ${agent} timed out after ${DISCOVERY_TIMEOUT_MS / 1000}s`));
-      }, DISCOVERY_TIMEOUT_MS);
-    });
-
-    const result = await Promise.race([discovery, timeout]);
-    clearTimeout(timer!);
-    return result;
-  } catch (err) {
-    logger.warn(`[sidecar] Discovery failed: agent=${agent}`, err);
-    return [];
-  } finally {
-    if (timer) clearTimeout(timer);
-    // Wait briefly for handle assignment if timed out — ensureSession may still be completing
-    if (timedOut && !handle) {
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    if (handle) {
-      await runtime.close({ handle, reason: "discovery complete" }).catch((err: any) => {
-        logger.debug(`[sidecar] Discovery close failed: agent=${agent}`, err);
-      });
-    }
-    await rm(stateDir, { recursive: true, force: true }).catch((err: any) => {
-      logger.debug(`[sidecar] Discovery cleanup failed: agent=${agent}, stateDir=${stateDir}`, err);
-    });
-  }
-}
+const HEADLESS_EXCLUDED_PROVIDERS = new Set(["github-copilot"]);
 
 function resolveAndLog(envVar: string, packageName: string, entryFile: string): string {
   const result = resolveExtensionPathDetailed(envVar, packageName, entryFile);
@@ -119,71 +52,102 @@ type CliDiscoverModule = {
   discoverCliModels: (agent: string) => Promise<DiscoveredModel[]>;
 };
 
-let cliDiscoverModule: CliDiscoverModule | null = null;
+type AcpxDiscoverModule = {
+  discoverAcpxModels: (agent: string, cwd?: string) => Promise<DiscoveredModel[]>;
+};
 
 const ACPX_EXTENSION = resolveAndLog("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
 const CLI_PROVIDER_EXTENSION = resolveAndLog("SIDECAR_CLI_PROVIDER_EXTENSION_PATH", "pi-orchestrator-config", "extensions/cli-provider/index.ts");
 /** discover.ts lives next to the cli-provider entry (same override dir when SIDECAR_CLI_PROVIDER_EXTENSION_PATH is set). */
 const CLI_DISCOVER_MODULE = CLI_PROVIDER_EXTENSION
-  ? join(dirname(CLI_PROVIDER_EXTENSION), "discover.ts")
+  ? `${CLI_PROVIDER_EXTENSION.slice(0, CLI_PROVIDER_EXTENSION.lastIndexOf("/"))}/discover.ts`
   : "";
+/** acpx-provider exports discoverAcpxModels directly from its entry file — no separate discover.ts. */
+const ACPX_DISCOVER_MODULE = ACPX_EXTENSION;
 const VERTEX_EXTENSION = resolveAndLog("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
 const SUBAGENT_EXTENSION = resolveAndLog("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");
 
+/** Cache of jiti-loaded fallback discovery modules, keyed by resolved path. */
+const jitiModuleCache = new Map<string, unknown>();
+
 /**
- * Load cli-provider's discover.ts via jiti (TypeScript at runtime).
- * Uses the package's exported discoverCliModels — same API designed for sidecar registries.
+ * Load a TypeScript module at runtime via jiti and return the export named
+ * `exportName` (handling both named and default-wrapped exports). Results
+ * are cached per path since jiti transpilation is not free and these modules
+ * are pure functions with no meaningful per-call state.
  */
-function loadCliDiscoverModule(discoverPath: string): CliDiscoverModule {
-  if (cliDiscoverModule) return cliDiscoverModule;
+function loadJitiExport<T extends Record<string, unknown>>(path: string, exportName: keyof T & string): T {
+  const cached = jitiModuleCache.get(path);
+  if (cached) return cached as T;
   const jiti = createJiti(import.meta.url);
-  const mod = jiti(discoverPath) as CliDiscoverModule | { default: CliDiscoverModule };
-  cliDiscoverModule = "discoverCliModels" in mod && typeof mod.discoverCliModels === "function"
-    ? mod
-    : (mod as { default: CliDiscoverModule }).default;
-  if (!cliDiscoverModule?.discoverCliModels) {
-    throw new Error(`cli-provider discover module missing discoverCliModels at ${discoverPath}`);
+  const mod = jiti(path) as Record<string, unknown> & { default?: T };
+  const resolved = (exportName in mod && typeof mod[exportName] === "function" ? mod : mod.default) as T | undefined;
+  if (!resolved || typeof resolved[exportName] !== "function") {
+    throw new Error(`Module missing ${exportName} at ${path}`);
   }
-  return cliDiscoverModule;
+  jitiModuleCache.set(path, resolved);
+  return resolved;
 }
 
-/**
- * Discover models from a CLI agent via pi-config's cli-provider discover API.
- * Model ids are CLI `--model` values (e.g. cursor:composer-2.5), not acpx bracket ids.
- */
-async function discoverCliModels(agent: string): Promise<DiscoveredModel[]> {
-  logger.debug(`[sidecar] CLI_DISCOVERY_START: agent=${agent}`);
-  if (!/^[a-z0-9_-]+$/i.test(agent)) {
-    throw new Error(`Invalid agent name: ${agent}`);
-  }
-  if (!CLI_DISCOVER_MODULE) {
-    logger.warn(`[sidecar] CLI_DISCOVERY_SKIPPED: agent=${agent}, reason=discover_module_path_unresolved`);
-    return [];
-  }
-
+/** Race a discovery call against DISCOVERY_TIMEOUT_MS; never throws — returns [] on failure. */
+async function raceDiscovery(agent: string, kind: string, run: () => Promise<DiscoveredModel[]>): Promise<DiscoveredModel[]> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const discovery = (async () => {
-      const mod = loadCliDiscoverModule(CLI_DISCOVER_MODULE);
-      return await mod.discoverCliModels(agent);
-    })();
-
+    const discovery = run();
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        reject(new Error(`cli discovery for ${agent} timed out after ${DISCOVERY_TIMEOUT_MS / 1000}s`));
+        reject(new Error(`${kind} fallback discovery for ${agent} timed out after ${DISCOVERY_TIMEOUT_MS / 1000}s`));
       }, DISCOVERY_TIMEOUT_MS);
     });
-
     const result = await Promise.race([discovery, timeout]);
-    clearTimeout(timer);
+    clearTimeout(timer!);
     return result;
   } catch (err) {
-    logger.warn(`[sidecar] CLI_DISCOVERY_FAILED: agent=${agent}`, err);
+    logger.warn(`[sidecar] ${kind.toUpperCase()}_DISCOVERY_FALLBACK_FAILED: agent=${agent}`, err);
     return [];
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
+
+const AGENT_NAME_PATTERN = /^[a-z0-9_-]+$/i;
+
+/**
+ * Builds a fallback model-discovery function for one extension kind (acpx or
+ * cli), used only when the shared ModelRuntime has no (or an empty)
+ * `<kind>-<agent>` provider registered — e.g. an agent added to
+ * ACPX_AGENTS/CLI_AGENTS after the internal runtime already loaded. Loads the
+ * extension's own exported discovery function via jiti rather than
+ * duplicating its discovery logic here. Shared by discoverAcpxModelsFallback/
+ * discoverCliModelsFallback below, which previously duplicated this agent-name
+ * validation + module-resolved gating + raceDiscovery() wrapping verbatim.
+ */
+function makeDiscoverFallback<T extends Record<string, unknown>>(
+  kind: "acpx" | "cli",
+  modulePath: string,
+  exportName: keyof T & string,
+): (agent: string) => Promise<DiscoveredModel[]> {
+  const label = kind.toUpperCase();
+  return async (agent: string): Promise<DiscoveredModel[]> => {
+    logger.debug(`[sidecar] ${label}_DISCOVERY_FALLBACK_START: agent=${agent}`);
+    if (!AGENT_NAME_PATTERN.test(agent)) {
+      throw new Error(`Invalid agent name: ${agent}`);
+    }
+    if (!modulePath) {
+      logger.warn(`[sidecar] ${label}_DISCOVERY_FALLBACK_SKIPPED: agent=${agent}, reason=module_path_unresolved`);
+      return [];
+    }
+    return raceDiscovery(agent, kind, () => {
+      const discover = loadJitiExport<T>(modulePath, exportName)[exportName] as (agent: string) => Promise<DiscoveredModel[]>;
+      return discover(agent);
+    });
+  };
+}
+
+/** Model ids are acpx bracket ids (e.g. cursor:default[]). */
+const discoverAcpxModelsFallback = makeDiscoverFallback<AcpxDiscoverModule>("acpx", ACPX_DISCOVER_MODULE, "discoverAcpxModels");
+/** Model ids are CLI `--model` values (e.g. cursor:composer-2.5), not acpx bracket ids. */
+const discoverCliModelsFallback = makeDiscoverFallback<CliDiscoverModule>("cli", CLI_DISCOVER_MODULE, "discoverCliModels");
 
 /** Parse comma-separated agent env vars (ACPX_AGENTS / CLI_AGENTS). */
 function parseAgentList(envValue: string | undefined): string[] {
@@ -191,6 +155,100 @@ function parseAgentList(envValue: string | undefined): string[] {
     .split(",")
     .map((a) => a.trim())
     .filter((a) => a.length > 0);
+}
+
+interface ExtensionEntry {
+  path: string;
+  label: string;
+  /** Marks this entry as the subagent extension for ResolvedExtensions.subagentLoaded — an
+   *  explicit flag rather than matching on `label === "Subagent"`, so a future label rename
+   *  can't silently break the create()/subagent-tool-rejection check. */
+  isSubagent?: boolean;
+}
+
+interface ResolvedExtensions {
+  paths: string[];
+  subagentLoaded: boolean;
+}
+
+/** Resolve a list of candidate extension paths to existing files, logging each outcome. */
+function resolveExtensionPaths(entries: ExtensionEntry[]): ResolvedExtensions {
+  const paths: string[] = [];
+  let subagentLoaded = false;
+  for (const { path, label, isSubagent } of entries) {
+    if (!path) {
+      logger.warn(`[sidecar] EXTENSION_RESOLVE_EMPTY: label=${label}`);
+      continue;
+    }
+    try {
+      const stat = statSync(path);
+      if (!stat.isFile()) {
+        logger.warn(`[sidecar] EXTENSION_NOT_FILE: label=${label}, path=${path}`);
+        continue;
+      }
+      paths.push(path);
+      logger.log(`[sidecar] EXTENSION_FOUND: label=${label}, path=${path}`);
+      if (isSubagent) subagentLoaded = true;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[sidecar] EXTENSION_NOT_FOUND: label=${label}, path=${path}, error=${errMsg}`);
+    }
+  }
+  return { paths, subagentLoaded };
+}
+
+/**
+ * Both the internal registrar runtime and every user session disable compaction
+ * (sessions are short-lived/one-shot over HTTP — no need for the SDK to manage
+ * context window pressure) and use an in-memory settings store (no on-disk
+ * config to load/persist for either). Shared factory so the two call sites
+ * (ensureInternalRuntime()'s createRuntime, create()) don't drift.
+ */
+function createSessionSettingsManager(): SettingsManager {
+  return SettingsManager.inMemory({ compaction: { enabled: false } });
+}
+
+/** Internal registrar session never receives prompts — system prompt is a placeholder for clarity in logs/dumps. */
+const INTERNAL_REGISTRAR_SYSTEM_PROMPT =
+  "You are the pi-sidecar's internal model registrar session. You exist only to keep the " +
+  "ACPX/CLI/Vertex/Subagent extensions loaded so their providers stay registered on the shared " +
+  "ModelRuntime. You are never prompted.";
+
+/** Default agent dir for the internal registrar runtime; independent of per-request agent_dir overrides. */
+const INTERNAL_AGENT_DIR = "/tmp/pi-sidecar-agent";
+
+/**
+ * Builds the CreateAgentSessionRuntimeFactory for the internal registrar
+ * runtime (see SessionStore.ensureInternalRuntime()). Extracted to a
+ * standalone module-level function — rather than an inline closure nested
+ * inside the class method's async IIFE — so the factory's own logic (wiring
+ * settings, extensions, and diagnostics) reads independently of the
+ * lazy-init/idempotency plumbing around it.
+ */
+function createInternalRuntimeFactory(extensionPaths: string[]): CreateAgentSessionRuntimeFactory {
+  return async ({ cwd, agentDir, sessionManager: runtimeSessionManager, sessionStartEvent }) => {
+    const settingsManager = createSessionSettingsManager();
+    const services = await createAgentSessionServices({
+      cwd,
+      agentDir,
+      settingsManager,
+      resourceLoaderOptions: {
+        additionalExtensionPaths: extensionPaths,
+        systemPromptOverride: () => INTERNAL_REGISTRAR_SYSTEM_PROMPT,
+      },
+    });
+    const created = await createAgentSessionFromServices({
+      services,
+      sessionManager: runtimeSessionManager,
+      sessionStartEvent,
+      tools: [],
+    });
+    const extensionErrors = services.resourceLoader.getExtensions().errors.map(({ path, error }) => ({
+      type: "error" as const,
+      message: `Failed to load extension "${path}": ${error}`,
+    }));
+    return { ...created, services, diagnostics: [...services.diagnostics, ...extensionErrors] };
+  };
 }
 
 export const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
@@ -228,16 +286,74 @@ export interface CreateSessionOptions {
   customTools?: CustomToolConfig[];
 }
 
+export interface ProviderStatus {
+  provider: string;
+  registered: boolean;
+  modelCount: number;
+  authStatus: ReturnType<ModelRuntime["getProviderAuthStatus"]> | null;
+  authCheck: Awaited<ReturnType<ModelRuntime["checkAuth"]>> | null;
+}
+
 export class SessionStore {
   private sessions = new Map<string, SessionEntry>();
-  /** Shared ModelRuntime (0.80+); replaces AuthStorage + ModelRegistry.create. */
+  /** Shared ModelRuntime (0.81+) — sourced from internalRuntime.services once created. */
   private modelRuntime: ModelRuntime | undefined;
   private modelRegistry: ModelRegistry | undefined;
+  /**
+   * Internal AgentSessionRuntime that owns the shared ModelRuntime and keeps
+   * ACPX/CLI/Vertex/Subagent extensions loaded for the sidecar process's
+   * lifetime. Created once, lazily, and disposed only in disposeAll().
+   *
+   * Why this exists: acpx-provider and cli-provider keep their own
+   * module-level state (acpx runtime sessions, CLI --resume markers) that is
+   * only correct if exactly one instance of each extension is ever loaded.
+   * `AgentSessionRuntime.dispose()` emits a `session_shutdown` event, which
+   * those extensions use as their own teardown signal — they clear that
+   * module-level state and their `filterModels()` (driven by `isConfigured()`)
+   * starts returning an empty list for every acpx-* / cli-* model. So this
+   * runtime must never be disposed except at process shutdown, and it must
+   * never be recreated to "refresh" discovery (see refreshModels()).
+   *
+   * User sessions created via create() never load ACPX/CLI (only Subagent and
+   * Vertex, which have no such shared state) and resolve acpx-* / cli-* models
+   * directly via `modelRuntime.getModel()`. This intentionally bypasses
+   * `ModelRuntime.getAvailable()`/`ModelRegistry.getAvailable()`, whose
+   * `filterModels()` call would read `isConfigured()` from the *internal*
+   * runtime's extension module instance — something a user session has no
+   * reason to depend on and would only add a footgun if it silently changed.
+   */
+  private internalRuntime: AgentSessionRuntime | undefined;
   private runtimeInit: Promise<void> | undefined;
   private _ready = false;
   private _discoveryError: string | null = null;
+  /**
+   * Cached acpx-* / cli-* model snapshots, refreshed by snapshotExtensionModels().
+   * This is the source of truth for create()'s acpx/cli validation — not a
+   * live provider lookup — so a session request always sees a consistent
+   * list matching the most recent GET /models response.
+   */
   private acpxModels: DiscoveredModel[] = [];
   private cliModels: DiscoveredModel[] = [];
+  /**
+   * Set at the very start of disposeAll(), before any session or the internal
+   * runtime is torn down. Once true, ensureInternalRuntime()/create()/getModels()/
+   * refreshModels()/getProviderStatus() all reject immediately instead of doing
+   * work against (or recreating) a runtime that is mid-teardown or gone — the
+   * internal runtime must never be recreated after process shutdown begins.
+   */
+  private _disposed = false;
+
+  get disposed(): boolean {
+    return this._disposed;
+  }
+
+  private assertNotDisposed(action: string): void {
+    if (this._disposed) {
+      const err = new Error(`SessionStore is shutting down; ${action} is no longer available`);
+      (err as any).statusCode = 503;
+      throw err;
+    }
+  }
 
   get ready(): boolean {
     return this._ready;
@@ -251,33 +367,59 @@ export class SessionStore {
     return this.sessions.size;
   }
 
-  /** Lazily create shared ModelRuntime + ModelRegistry facade (SDK 0.80). */
-  private async ensureRuntime(): Promise<void> {
-    if (this.modelRuntime && this.modelRegistry) return;
+  /**
+   * Lazily create the internal AgentSessionRuntime (see field docstring above).
+   * Idempotent — concurrent callers await the same in-flight creation.
+   */
+  private async ensureInternalRuntime(): Promise<void> {
+    this.assertNotDisposed("ensureInternalRuntime");
+    if (this.internalRuntime) return;
     if (!this.runtimeInit) {
       this.runtimeInit = (async () => {
-        this.modelRuntime = await ModelRuntime.create();
+        const { paths: extensionPaths } = resolveExtensionPaths([
+          { path: ACPX_EXTENSION, label: "ACPX" },
+          { path: CLI_PROVIDER_EXTENSION, label: "CLI" },
+          { path: VERTEX_EXTENSION, label: "Vertex" },
+          { path: SUBAGENT_EXTENSION, label: "Subagent", isSubagent: true },
+        ]);
+        logger.log(`[sidecar] INTERNAL_EXTENSIONS_LOADING: count=${extensionPaths.length}`);
+
+        const sessionManager = SessionManager.inMemory();
+        const createRuntime = createInternalRuntimeFactory(extensionPaths);
+
+        this.internalRuntime = await createAgentSessionRuntime(createRuntime, {
+          cwd: "/tmp",
+          agentDir: INTERNAL_AGENT_DIR,
+          sessionManager,
+        });
+        this.modelRuntime = this.internalRuntime.services.modelRuntime;
         this.modelRegistry = new ModelRegistry(this.modelRuntime);
-        logger.debug("[sidecar] MODEL_RUNTIME_INITIALIZED:");
+        for (const diagnostic of this.internalRuntime.diagnostics) {
+          const log = diagnostic.type === "error" ? logger.error : diagnostic.type === "warning" ? logger.warn : logger.debug;
+          log(`[sidecar] INTERNAL_RUNTIME_DIAGNOSTIC: type=${diagnostic.type}, message=${diagnostic.message}`);
+        }
+        logger.info(`[sidecar] INTERNAL_RUNTIME_CREATED: extensions=${extensionPaths.length}, agentDir=${INTERNAL_AGENT_DIR}`);
       })();
     }
     await this.runtimeInit;
   }
 
   /**
-   * List models from all sources. Ensures ModelRuntime is initialized so builtins
-   * are never silently empty during startup races.
+   * List models from all sources. Ensures the internal runtime is initialized
+   * so builtins are never silently empty during startup races.
    * ACPX models take precedence over builtin placeholders with the same base ID;
    * cli-* stays a separate source (no acpx↔cli merge).
    */
   async getModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
-    await this.ensureRuntime();
+    this.assertNotDisposed("getModels");
+    await this.ensureInternalRuntime();
 
-    // Providers that require browser OAuth and cannot work in a headless container
-    const HEADLESS_EXCLUDED_PROVIDERS = new Set(["github-copilot"]);
-
-    // Extension providers may leak into ModelRegistry after bootstrap session load —
-    // strip them here; callers get those only from explicit ACPX_AGENTS / CLI_AGENTS discovery.
+    // acpx-* / cli-* providers are registered directly on the shared ModelRuntime
+    // by the internal runtime's extensions (see ensureInternalRuntime). Strip
+    // them from the builtins list here — callers get those only via the
+    // explicit acpxModels/cliModels caches populated by snapshotExtensionModels(),
+    // which read the provider's raw catalog rather than the auth-filtered one
+    // (see the internalRuntime field docstring for why).
     const isExtensionProvider = (provider: string): boolean =>
       provider.startsWith("acpx-") || provider.startsWith("cli-");
 
@@ -309,77 +451,83 @@ export class SessionStore {
   }
 
   /**
+   * Snapshot one extension model source (acpx or cli) for each configured agent.
+   * Prefers the shared ModelRuntime's provider catalog (already populated by
+   * the internal runtime's extension load / refresh()); falls back to a
+   * jiti-loaded discovery call only when that provider is missing or empty.
+   */
+  private async snapshotAgentSource(
+    agents: string[],
+    kind: "acpx" | "cli",
+    fallback: (agent: string) => Promise<DiscoveredModel[]>,
+  ): Promise<DiscoveredModel[]> {
+    if (agents.length === 0) return [];
+    const label = kind.toUpperCase();
+    logger.info(`[sidecar] ${label}_SNAPSHOT_START: agents=${agents.join(",")}`);
+
+    const results = await Promise.allSettled(
+      agents.map(async (agent) => {
+        const providerId = `${kind}-${agent}`;
+        const provider = this.modelRuntime?.getProvider(providerId);
+        const fromRuntime = provider?.getModels().map((m) => ({ id: m.id, name: m.name, provider: providerId })) ?? [];
+        if (fromRuntime.length > 0) {
+          return { models: fromRuntime, source: "modelRuntime" as const };
+        }
+        const fromFallback = await fallback(agent);
+        return { models: fromFallback, source: "fallback" as const };
+      }),
+    );
+
+    const models: DiscoveredModel[] = [];
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const agent = agents[i];
+      if (result.status === "fulfilled") {
+        models.push(...result.value.models);
+        logger.info(`[sidecar] ${label}_SNAPSHOT_OK: agent=${agent}, count=${result.value.models.length}, source=${result.value.source}`);
+      } else {
+        logger.error(`[sidecar] ${label}_SNAPSHOT_FAILED: agent=${agent}`, result.reason);
+      }
+    }
+    return models;
+  }
+
+  private async snapshotExtensionModels(): Promise<void> {
+    this.acpxModels = await this.snapshotAgentSource(parseAgentList(process.env.ACPX_AGENTS), "acpx", discoverAcpxModelsFallback);
+    this.cliModels = await this.snapshotAgentSource(parseAgentList(process.env.CLI_AGENTS), "cli", discoverCliModelsFallback);
+  }
+
+  /**
    * Discover models from all configured providers. Blocks until complete.
    * Called on startup — /health returns ok only after this finishes.
    */
   async refreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
+    this.assertNotDisposed("refreshModels");
     logger.debug(`[sidecar] MODEL_DISCOVERY_START:`);
     try {
-      await this.ensureRuntime();
+      const isFirstDiscovery = !this.internalRuntime;
+      // First call: creates the internal runtime, which loads ACPX/CLI/Vertex/
+      // Subagent extensions and triggers their synchronous discovery once.
+      await this.ensureInternalRuntime();
 
-      // Create a bootstrap session to trigger extension loading.
-      // Extensions like vertex-claude register models synchronously on load.
-      // The session is kept alive (disposed at cleanup) to maintain extension state.
-      const bootstrapId = await this.create({
-        provider: "google",
-        model: "gemini-2.5-flash",
-        systemPrompt: "bootstrap",
-        cwd: "/tmp",
-      });
-      logger.info(`[sidecar] BOOTSTRAP_SESSION_CREATED: purpose=extension_loading`);
-
-      // Discover acpx models using the extension's library-based discovery
-      const acpxAgents = parseAgentList(process.env.ACPX_AGENTS);
-      this.acpxModels = [];
-      if (acpxAgents.length > 0) {
-        logger.info(`[sidecar] ACPX_DISCOVERY_START: agents=${acpxAgents.join(",")}`);
-        const results = await Promise.allSettled(
-          acpxAgents.map((agent) => discoverAcpxModels(agent)),
-        );
-
-        const discoveredModels: DiscoveredModel[] = [];
-        for (let i = 0; i < results.length; i++) {
-          const result = results[i];
-          const agent = acpxAgents[i];
-          if (result.status === "fulfilled" && result.value.length > 0) {
-            discoveredModels.push(...result.value);
-            logger.info(`[sidecar] ACPX_DISCOVERY_OK: agent=${agent}, count=${result.value.length}`);
-          } else if (result.status === "rejected") {
-            logger.error(`[sidecar] ACPX_DISCOVERY_FAILED: agent=${agent}`, result.reason);
-          } else {
-            logger.warn(`[sidecar] ACPX_DISCOVERY_EMPTY: agent=${agent}`);
-          }
+      if (!isFirstDiscovery) {
+        // Extensions are already loaded and their providers already registered
+        // on the shared ModelRuntime — reloading them would give acpx-provider/
+        // cli-provider a second module instance with its own empty agents Map
+        // (see the internalRuntime field docstring). Instead, ask the runtime to
+        // re-fetch each provider's catalog: Provider.refreshModels(), which
+        // createRuntimeProvider() wires to the extension's fetchModels callback.
+        // allowNetwork: false — acpx-provider/cli-provider resolve their catalogs
+        // from the local acpx runtime / CLI binaries, not the network; ModelRuntime
+        // defaults allowNetwork to true (for builtin providers' remote catalog
+        // fetches), which we don't want triggered from this localhost refresh path.
+        const result = await this.modelRuntime!.refresh({ force: true, allowNetwork: false });
+        for (const [providerId, err] of result.errors) {
+          logger.warn(`[sidecar] MODEL_REFRESH_PROVIDER_FAILED: provider=${providerId}, error=${err.message}`);
         }
-        this.acpxModels = discoveredModels;
       }
 
-      // Discover cli-* models via pi-config cli-provider (CLI_AGENTS)
-      const cliAgents = parseAgentList(process.env.CLI_AGENTS);
-      this.cliModels = [];
-      if (cliAgents.length > 0) {
-        logger.info(`[sidecar] CLI_DISCOVERY_START: agents=${cliAgents.join(",")}`);
-        const results = await Promise.allSettled(
-          cliAgents.map((agent) => discoverCliModels(agent)),
-        );
-
-        const discoveredModels: DiscoveredModel[] = [];
-        for (let i = 0; i < results.length; i++) {
-          const result = results[i];
-          const agent = cliAgents[i];
-          if (result.status === "fulfilled" && result.value.length > 0) {
-            discoveredModels.push(...result.value);
-            logger.info(`[sidecar] CLI_DISCOVERY_OK: agent=${agent}, count=${result.value.length}`);
-          } else if (result.status === "rejected") {
-            logger.error(`[sidecar] CLI_DISCOVERY_FAILED: agent=${agent}`, result.reason);
-          } else {
-            logger.warn(`[sidecar] CLI_DISCOVERY_EMPTY: agent=${agent}`);
-          }
-        }
-        this.cliModels = discoveredModels;
-      }
-
-      // Clean up bootstrap session
-      this.delete(bootstrapId);
+      await this.snapshotExtensionModels();
 
       this._ready = true;
       this._discoveryError = null;
@@ -388,49 +536,97 @@ export class SessionStore {
       return models;
     } catch (err: any) {
       this._discoveryError = err?.message || "Unknown discovery error";
-      this._ready = true;  // Mark as ready but with error — don't block health forever
+      this._ready = true; // Mark as ready but with error — don't block health forever
       logger.error(`[sidecar] MODEL_DISCOVERY_FAILED:`, err);
-      throw err;  // Rethrow so callers can handle (startup catches, POST /models/refresh returns 500)
+      throw err; // Rethrow so callers can handle (startup catches, POST /models/refresh returns 500)
     }
   }
 
+  /**
+   * Auth/registration/model-count snapshot for one provider, for diagnostics
+   * (GET /models/:provider/status). Model counts for acpx-* / cli-* come from
+   * the cache populated by snapshotExtensionModels() — the same source create()
+   * validates against — rather than the provider's live (auth-gated) catalog.
+   */
+  async getProviderStatus(provider: string): Promise<ProviderStatus> {
+    this.assertNotDisposed("getProviderStatus");
+    await this.ensureInternalRuntime();
+
+    const registeredProvider = this.modelRuntime!.getProvider(provider);
+    const registered = !!registeredProvider;
+
+    let modelCount: number;
+    if (HEADLESS_EXCLUDED_PROVIDERS.has(provider)) {
+      // Mirror getModels(): these providers need interactive browser OAuth and
+      // are excluded from the catalog this process can ever actually serve, so
+      // report 0 here too rather than the SDK's raw (unusable) model count.
+      modelCount = 0;
+    } else if (provider.startsWith("acpx-")) {
+      modelCount = this.acpxModels.filter((m) => m.provider === provider).length;
+    } else if (provider.startsWith("cli-")) {
+      modelCount = this.cliModels.filter((m) => m.provider === provider).length;
+    } else {
+      modelCount = registeredProvider?.getModels().length ?? 0;
+    }
+
+    let authCheck: ProviderStatus["authCheck"] = null;
+    try {
+      authCheck = (await this.modelRuntime!.checkAuth(provider)) ?? null;
+    } catch (err) {
+      logger.warn(`[sidecar] PROVIDER_STATUS_AUTH_CHECK_FAILED: provider=${provider}`, err);
+    }
+
+    let authStatus: ProviderStatus["authStatus"] = null;
+    try {
+      authStatus = this.modelRuntime!.getProviderAuthStatus(provider);
+    } catch (err) {
+      logger.warn(`[sidecar] PROVIDER_STATUS_AUTH_STATUS_FAILED: provider=${provider}`, err);
+    }
+
+    logger.debug(`[sidecar] PROVIDER_STATUS: provider=${provider}, registered=${registered}, modelCount=${modelCount}`);
+
+    return { provider, registered, modelCount, authStatus, authCheck };
+  }
+
   async create(options: CreateSessionOptions): Promise<string> {
+    this.assertNotDisposed("create");
     const id = randomUUID();
 
     if (!options.model) {
       throw new Error(`Model is required. Use GET /models to list available models.`);
     }
 
-    await this.ensureRuntime();
+    await this.ensureInternalRuntime();
 
     const isAcpxProvider = options.provider.startsWith("acpx-");
     const isCliProvider = options.provider.startsWith("cli-");
 
-    // Extension sources are selected explicitly via provider prefix.
-    // Do not resolve them from ModelRegistry (bootstrap may register extras from global settings).
+    // Extension sources are selected explicitly via provider prefix and
+    // validated against the acpx/cli cache (kept in sync by refreshModels()).
     let model: any;
-    if (isAcpxProvider) {
-      const match = this.acpxModels.some(
-        (m) => m.id === options.model && m.provider === options.provider,
-      );
+    if (isAcpxProvider || isCliProvider) {
+      const cache = isAcpxProvider ? this.acpxModels : this.cliModels;
+      const envVar = isAcpxProvider ? "ACPX_AGENTS" : "CLI_AGENTS";
+      const sourceLabel = isAcpxProvider ? "acpx-*" : "cli-*";
+      const match = cache.some((m) => m.id === options.model && m.provider === options.provider);
       if (!match) {
         throw new Error(
           `Model '${options.model}' not found for provider '${options.provider}'. ` +
-            `Set ACPX_AGENTS and use GET /models to list acpx-* models.`,
+            `Set ${envVar} and use GET /models to list ${sourceLabel} models.`,
         );
       }
-      // Leave model undefined — createAgentSession resolves via acpx-provider extension
-    } else if (isCliProvider) {
-      const match = this.cliModels.some(
-        (m) => m.id === options.model && m.provider === options.provider,
-      );
-      if (!match) {
+      // Resolve directly against the shared ModelRuntime — this bypasses
+      // getAvailable()/filterModels(), which would read the extension's
+      // isConfigured() state from the internal runtime's own module instance.
+      // See the internalRuntime field docstring for why user sessions must not
+      // depend on that state.
+      model = this.modelRuntime!.getModel(options.provider, options.model);
+      if (!model) {
         throw new Error(
-          `Model '${options.model}' not found for provider '${options.provider}'. ` +
-            `Set CLI_AGENTS and use GET /models to list cli-* models.`,
+          `Model '${options.model}' was found in the ${isAcpxProvider ? "acpx" : "cli"} model cache but is no ` +
+            `longer registered on the shared ModelRuntime for provider '${options.provider}'. Try POST /models/refresh.`,
         );
       }
-      // Leave model undefined — createAgentSession resolves via cli-provider extension
     } else {
       model = this.modelRegistry!.find(options.provider, options.model)
         || this.modelRuntime!.getModel(options.provider, options.model)
@@ -444,36 +640,18 @@ export class SessionStore {
     }
 
     logger.debug(
-      `[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, ` +
-        `registryMatch=${!!model}, acpxSource=${isAcpxProvider}, cliSource=${isCliProvider}`,
+      `[sidecar] Model resolved: provider=${options.provider}, model=${options.model}, acpxSource=${isAcpxProvider}, cliSource=${isCliProvider}`,
     );
 
-    // Build extension paths (only include existing files)
-    const extensionPaths: string[] = [];
-    const tryAddExtension = (path: string, label: string): boolean => {
-      if (!path) {
-        logger.warn(`[sidecar] EXTENSION_RESOLVE_EMPTY: label=${label}`);
-        return false;
-      }
-      try {
-        const stat = statSync(path);
-        if (!stat.isFile()) {
-          logger.warn(`[sidecar] EXTENSION_NOT_FILE: label=${label}, path=${path}`);
-          return false;
-        }
-        extensionPaths.push(path);
-        logger.log(`[sidecar] EXTENSION_FOUND: label=${label}, path=${path}`);
-        return true;
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        logger.warn(`[sidecar] EXTENSION_NOT_FOUND: label=${label}, path=${path}, error=${errMsg}`);
-        return false;
-      }
-    };
-    tryAddExtension(ACPX_EXTENSION, "ACPX");
-    tryAddExtension(CLI_PROVIDER_EXTENSION, "CLI");
-    tryAddExtension(VERTEX_EXTENSION, "Vertex");
-    const subagentLoaded = tryAddExtension(SUBAGENT_EXTENSION, "Subagent");
+    // User sessions deliberately never load ACPX/CLI here: those extensions own
+    // module-level state (acpx runtime sessions, CLI --resume markers) that is
+    // only correct with a single loaded instance — the internal runtime's (see
+    // the internalRuntime field docstring). Subagent and Vertex have no such
+    // shared state and are safe to load per user session.
+    const { paths: extensionPaths, subagentLoaded } = resolveExtensionPaths([
+      { path: VERTEX_EXTENSION, label: "Vertex" },
+      { path: SUBAGENT_EXTENSION, label: "Subagent", isSubagent: true },
+    ]);
     logger.log(`[sidecar] EXTENSIONS_LOADING: count=${extensionPaths.length}`);
 
     // Build custom tools from config — result is cast to any[] for Pi SDK ToolDefinition compatibility
@@ -521,9 +699,7 @@ export class SessionStore {
     const allToolNames = [...tools, ...customToolNames];
     logger.debug(`[sidecar] Tools configured: builtin=${JSON.stringify(tools)}, custom=${customTools.length} (${customToolNames.join(",")}), allAllowed=${JSON.stringify(allToolNames)}`);
 
-    const settingsManager = SettingsManager.inMemory({
-      compaction: { enabled: false },
-    });
+    const settingsManager = createSessionSettingsManager();
 
     // The Pi SDK's DefaultResourceLoader automatically discovers project-level resources
     // from {cwd}/.pi/ — including skills, prompts, extensions, and themes.
@@ -552,6 +728,19 @@ export class SessionStore {
       settingsManager,
       modelRuntime: this.modelRuntime!,
     });
+
+    // Re-check after awaits: disposeAll() may have run while we were creating.
+    // Discard the orphan session instead of leaking it past shutdown.
+    if (this._disposed) {
+      try {
+        session.dispose();
+      } catch (err) {
+        logger.warn(`[sidecar] SESSION_ORPHAN_DISPOSE_FAILED: session=${id}`, err);
+      }
+      const err = new Error("Sidecar is shutting down");
+      (err as Error & { statusCode?: number }).statusCode = 503;
+      throw err;
+    }
 
     this.sessions.set(id, { session, lastActivity: Date.now(), inFlight: false });
     logger.log(`[sidecar] Session created: ${id} (provider=${options.provider}, model=${options.model}, cwd=${options.cwd}, tools=${tools.join(",")}, customTools=${customTools.length})`);
@@ -787,6 +976,7 @@ export class SessionStore {
     logger.info(`[sidecar] Session aborted: ${id}`);
   }
 
+  /** Disposes only the user AgentSession — never the internal registrar runtime. */
   delete(id: string): boolean {
     const entry = this.sessions.get(id);
     if (!entry) {
@@ -799,7 +989,22 @@ export class SessionStore {
     return true;
   }
 
-  disposeAll(): void {
+  /**
+   * Dispose all user sessions, then the internal runtime — in that order.
+   * User sessions' `AgentSession.dispose()` does not emit `session_shutdown`
+   * and is safe at any time. The internal runtime's `AgentSessionRuntime.dispose()`
+   * does emit it (see the internalRuntime field docstring), so it must be last:
+   * disposing it earlier would clear acpx-provider/cli-provider's module-level
+   * state while user sessions might still be relying on models resolved from it.
+   *
+   * Sets `_disposed = true` as the very first step, before any teardown work
+   * runs, so that concurrent/in-flight callers of ensureInternalRuntime()/create()/
+   * getModels()/refreshModels()/getProviderStatus() start rejecting immediately
+   * instead of racing the teardown or (worse) recreating the internal runtime
+   * after it's gone. Idempotent — safe to call more than once.
+   */
+  async disposeAll(): Promise<void> {
+    this._disposed = true;
     let count = 0;
     for (const [id, entry] of this.sessions) {
       logger.log(`[sidecar] Disposing session: ${id}`);
@@ -807,7 +1012,16 @@ export class SessionStore {
       count++;
     }
     this.sessions.clear();
-    logger.info(`[sidecar] All sessions disposed (${count} total)`);
+    logger.info(`[sidecar] All user sessions disposed (${count} total)`);
+
+    if (this.internalRuntime) {
+      await this.internalRuntime.dispose();
+      this.internalRuntime = undefined;
+      logger.info(`[sidecar] Internal runtime disposed`);
+    }
+    this.modelRuntime = undefined;
+    this.modelRegistry = undefined;
+    this.runtimeInit = undefined;
   }
 
   cleanupStale(maxAge: number): number {

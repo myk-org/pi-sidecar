@@ -56,4 +56,37 @@ describe("routeMatch", () => {
     const result = routeMatch("/completely/different", "/sessions/:id");
     assert.equal(result, null);
   });
+
+  it("matches /models/:provider/status and extracts a builtin provider id", () => {
+    const result = routeMatch("/models/google/status", "/models/:provider/status");
+    assert.ok(result);
+    assert.equal(result.provider, "google");
+  });
+
+  it("matches /models/:provider/status with a hyphenated acpx-* provider id", () => {
+    const result = routeMatch("/models/acpx-cursor/status", "/models/:provider/status");
+    assert.ok(result);
+    assert.equal(result.provider, "acpx-cursor");
+  });
+
+  it("matches /models/:provider/status with a hyphenated cli-* provider id", () => {
+    const result = routeMatch("/models/cli-cursor/status", "/models/:provider/status");
+    assert.ok(result);
+    assert.equal(result.provider, "cli-cursor");
+  });
+
+  it("does not match /models/:provider/status against the plain /models route", () => {
+    const result = routeMatch("/models", "/models/:provider/status");
+    assert.equal(result, null);
+  });
+
+  it("does not match /models/:provider/status against /models/refresh (wrong segment count)", () => {
+    const result = routeMatch("/models/refresh", "/models/:provider/status");
+    assert.equal(result, null);
+  });
+
+  it("does not match /models/:provider/status against extra nested segments", () => {
+    const result = routeMatch("/models/google/status/extra", "/models/:provider/status");
+    assert.equal(result, null);
+  });
 });

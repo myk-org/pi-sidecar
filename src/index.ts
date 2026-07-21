@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { SessionStore } from "./sessions.js";
 import { startWatchdog, type WatchdogOptions } from "./watchdog.js";
+import { assertPiVersionFloor } from "./pi-version.js";
 import { logger } from "./logger.js";
 
 const MAX_BODY_SIZE = 1_048_576;
@@ -68,6 +69,11 @@ export interface SidecarHandle {
 }
 
 export function startSidecar(options?: { port?: number; host?: string; watchdogUrl?: string; watchdogOptions?: WatchdogOptions }): SidecarHandle {
+  // Fail fast on a stale SDK install rather than surfacing confusing runtime
+  // errors later (e.g. createProvider()-based ACPX/CLI providers silently
+  // failing to register on a pre-0.81 SDK).
+  assertPiVersionFloor();
+
   // --- Subagent subprocess compatibility ---
   // PATH fix applied here so programmatic consumers also get it.
   // The argv[1] fix is in server.ts (CLI entry only).
@@ -131,10 +137,22 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
 
   const store = new SessionStore();
 
+  // Set true as the first step of shutdown (close()/watchdog onDead), before
+  // server.close() or store.disposeAll() run. New requests hit this check
+  // before touching the store, so in-flight teardown never races a request
+  // that would otherwise call into a disposed/disposing SessionStore.
+  let draining = false;
+
   const server = createServer(async (req, res) => {
     const method = req.method || "GET";
     const url = req.url || "/";
     const requestStart = Date.now();
+
+    if (draining) {
+      logger.warn(`[sidecar] REQUEST_REJECTED: method=${method}, url=${url.split("?")[0]}, reason=server_shutting_down`);
+      sendJson(res, 503, { error: "Server is shutting down" });
+      return;
+    }
 
     try {
       // GET /health
@@ -171,6 +189,22 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         const models = await store.refreshModels();
         logger.info(`[sidecar] POST /models/refresh 200 ${Date.now() - requestStart}ms models=${models.length}`);
         sendJson(res, 200, { models });
+        return;
+      }
+
+      // GET /models/:provider/status
+      const statusParams = routeMatch(url, "/models/:provider/status");
+      if (method === "GET" && statusParams) {
+        const status = await store.getProviderStatus(statusParams.provider);
+        if (!status.registered) {
+          logger.warn(
+            `[sidecar] GET /models/${statusParams.provider}/status 404 ${Date.now() - requestStart}ms: registered=false`,
+          );
+          sendJson(res, 404, { error: `Provider '${statusParams.provider}' is not registered`, ...status });
+          return;
+        }
+        logger.debug(`[sidecar] GET /models/${statusParams.provider}/status 200 ${Date.now() - requestStart}ms: registered=${status.registered}, modelCount=${status.modelCount}`);
+        sendJson(res, 200, status);
         return;
       }
 
@@ -334,12 +368,16 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
     const watchdogUrl = options?.watchdogUrl || process.env.SIDECAR_WATCHDOG_URL;
     if (watchdogUrl) {
       logger.info(`[sidecar] Watchdog enabled: url=${watchdogUrl}`);
-      stopWatchdog = startWatchdog(watchdogUrl, () => {
+      stopWatchdog = startWatchdog(watchdogUrl, async () => {
         logger.warn("[sidecar] Backend unresponsive, shutting down");
+        // Stop accepting requests before tearing down the store — see the
+        // `draining` declaration above and disposeAll()'s docstring for why
+        // this order matters.
+        draining = true;
         stopWatchdog?.();
         clearInterval(cleanupInterval);
-        store.disposeAll();
         server.close();
+        await store.disposeAll();
       }, options?.watchdogOptions);
     } else {
       logger.info("[sidecar] Watchdog disabled (no SIDECAR_WATCHDOG_URL)");
@@ -352,16 +390,26 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   });
 
   return {
-    close: () => new Promise<void>((resolve, reject) => {
+    close: async () => {
       logger.info("[sidecar] Shutting down...");
+      // Stop accepting requests before tearing down the store: set `draining`
+      // first (in-flight new requests 503 immediately), then start the server's
+      // close (stops accepting new connections), then dispose the store while
+      // the server winds down existing connections, and finally await the
+      // server's own close completion. See disposeAll()'s docstring for why
+      // the store must never be disposed while requests could still reach it.
+      draining = true;
       stopWatchdog?.();
       clearInterval(cleanupInterval);
-      store.disposeAll();
-      server.close((err) => {
-        if (err) reject(err);
-        else resolve();
-        logger.info("[sidecar] Shut down");
+      const closed = new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
-    }),
+      await store.disposeAll();
+      await closed;
+      logger.info("[sidecar] Shut down");
+    },
   };
 }

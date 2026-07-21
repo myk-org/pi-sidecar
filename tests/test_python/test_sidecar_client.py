@@ -116,6 +116,71 @@ class TestSidecarClient:
         assert result == models
         client._client.get.assert_awaited_once_with("/models")
 
+    # -- get_model_provider_status --
+    async def test_client_get_model_provider_status(self, client: SidecarClient):
+        # Matches the real sidecar's camelCase ProviderStatus shape (src/sessions.ts).
+        status = {
+            "provider": "google",
+            "registered": True,
+            "modelCount": 12,
+            "authStatus": {"configured": True},
+            "authCheck": {"ok": True},
+        }
+        mock_resp = _mock_response(200, status)
+        client._client.get = AsyncMock(return_value=mock_resp)
+
+        result = await client.get_model_provider_status("google")
+        assert result == status
+        client._client.get.assert_awaited_once_with("/models/google/status")
+
+    # -- get_model_provider_status URL-encodes the provider id --
+    async def test_client_get_model_provider_status_url_encodes_provider(self, client: SidecarClient):
+        status = {
+            "provider": "acpx-cursor",
+            "registered": True,
+            "modelCount": 3,
+            "authStatus": {"configured": True},
+            "authCheck": None,
+        }
+        mock_resp = _mock_response(200, status)
+        client._client.get = AsyncMock(return_value=mock_resp)
+
+        result = await client.get_model_provider_status("acpx-cursor")
+        assert result == status
+        client._client.get.assert_awaited_once_with("/models/acpx-cursor/status")
+
+    async def test_client_get_model_provider_status_encodes_special_characters(self, client: SidecarClient):
+        """Provider ids with reserved URL characters must not alter the request path."""
+        status = {
+            "provider": "weird/provider",
+            "registered": True,
+            "modelCount": 0,
+            "authStatus": None,
+            "authCheck": None,
+        }
+        mock_resp = _mock_response(200, status)
+        client._client.get = AsyncMock(return_value=mock_resp)
+
+        await client.get_model_provider_status("weird/provider")
+        client._client.get.assert_awaited_once_with("/models/weird%2Fprovider/status")
+
+    async def test_client_get_model_provider_status_raises_on_unregistered_404(self, client: SidecarClient):
+        """Unregistered providers return HTTP 404 from the sidecar."""
+        body = {
+            "error": "Provider 'missing-provider' is not registered",
+            "provider": "missing-provider",
+            "registered": False,
+            "modelCount": 0,
+            "authStatus": None,
+            "authCheck": None,
+        }
+        mock_resp = _mock_response(404, body)
+        client._client.get = AsyncMock(return_value=mock_resp)
+
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            await client.get_model_provider_status("missing-provider")
+        assert exc_info.value.response.status_code == 404
+
     # -- create_session --
     async def test_client_create_session(self, client: SidecarClient, tmp_path):
         mock_resp = _mock_response(200, {"session_id": "sess-123"})

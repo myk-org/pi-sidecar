@@ -1,6 +1,6 @@
 # pi-sidecar
 
-A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), exposing AI sessions over a simple JSON API. Ships with a Python client for easy integration.
+A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) (requires `@earendil-works/pi-coding-agent` ≥ 0.81.1), exposing AI sessions over a simple JSON API. Ships with a Python client for easy integration.
 
 📖 **[Full Documentation](https://myk-org.github.io/pi-sidecar/)**
 
@@ -8,6 +8,7 @@ A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs
 
 - **Session management** — create, prompt, abort, and delete AI sessions over REST
 - **Model discovery** — auto-discover models from ACPX agents, CLI providers (`cli-*`), and built-in providers
+- **Provider diagnostics** — `GET /models/:provider/status` reports registration, model count, and auth status for a single provider (Python: `SidecarClient.get_model_provider_status()`)
 - **Custom tools** — plug in domain-specific tools at session creation via `custom_tools`
 - **HTTP-backed tools** — custom tools with `http` config get automatic request execution with parameter interpolation and security hardening
 - **Subagent delegation** — delegate tasks to specialized agents via the `subagent` tool (loaded as a Pi SDK extension)
@@ -38,6 +39,9 @@ print(result.text)
 ```bash
 # Start the sidecar
 npm run build && node dist/server.js  # listens on 127.0.0.1:9100
+
+# Or, for local development (background by default; default port 9201 — override with SIDECAR_PORT; see --help):
+scripts/start-sidecar.sh
 ```
 
 See the [full documentation](https://myk-org.github.io/pi-sidecar/) for everything else.
