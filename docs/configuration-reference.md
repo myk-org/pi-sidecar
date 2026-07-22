@@ -296,8 +296,8 @@ All environment variables in one place:
 | Variable | Component | Default | Purpose |
 |----------|-----------|---------|---------|
 | `SIDECAR_PORT` | Server | `9100` | HTTP listen port |
-| `SIDECAR_HOST` | Server | unset (`127.0.0.1`) | Bind address override; non-loopback rejects `agent_dir` with HTTP 400 (unless `DEV_MODE`) |
-| `DEV_MODE` | Server | unset | Bind `0.0.0.0`; type-check then discard `agent_dir` |
+| `SIDECAR_HOST` | Server | unset (`DEV_MODE? 0.0.0.0 : 127.0.0.1`) | Bind override; precedence `options.host` → `SIDECAR_HOST` → `DEV_MODE` → localhost; non-loopback rejects `agent_dir` with HTTP 400 (unless `DEV_MODE`) |
+| `DEV_MODE` | Server | unset | When `SIDECAR_HOST` unset: bind `0.0.0.0`; type-check then discard `agent_dir` |
 | `PI_SIDECAR_LOG_LEVEL` | Server + Client | `info` | Log verbosity (`debug` / `info` / `warn` / `error`) |
 | `ACPX_AGENTS` | Server | `""` | Comma-separated ACPX agents for model discovery |
 | `SIDECAR_WATCHDOG_URL` | Server | unset | Companion backend health URL (enables watchdog) |
