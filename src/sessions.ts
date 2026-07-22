@@ -193,21 +193,23 @@ function parseAgentList(envValue: string | undefined): string[] {
 interface ExtensionEntry {
   path: string;
   label: string;
-  /** Marks this entry as the subagent extension for ResolvedExtensions.subagentLoaded — an
-   *  explicit flag rather than matching on `label === "Subagent"`, so a future label rename
-   *  can't silently break the create()/subagent-tool-rejection check. */
+  /** Marks this entry as the subagent extension for ResolvedExtensions.subagentPathFound —
+   *  an explicit flag rather than matching on `label === "Subagent"`, so a future label rename
+   *  can't silently break the create()/subagent path pre-check. Actual load success is verified
+   *  after DefaultResourceLoader.reload() via getExtensions(). */
   isSubagent?: boolean;
 }
 
 interface ResolvedExtensions {
   paths: string[];
-  subagentLoaded: boolean;
+  /** True when the subagent extension file was found on disk (path resolve only). */
+  subagentPathFound: boolean;
 }
 
 /** Resolve a list of candidate extension paths to existing files, logging each outcome. */
 function resolveExtensionPaths(entries: ExtensionEntry[]): ResolvedExtensions {
   const paths: string[] = [];
-  let subagentLoaded = false;
+  let subagentPathFound = false;
   for (const { path, label, isSubagent } of entries) {
     if (!path) {
       logger.warn(`[sidecar] EXTENSION_RESOLVE_EMPTY: label=${label}`);
@@ -221,13 +223,13 @@ function resolveExtensionPaths(entries: ExtensionEntry[]): ResolvedExtensions {
       }
       paths.push(path);
       logger.log(`[sidecar] EXTENSION_FOUND: label=${label}, path=${path}`);
-      if (isSubagent) subagentLoaded = true;
+      if (isSubagent) subagentPathFound = true;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.warn(`[sidecar] EXTENSION_NOT_FOUND: label=${label}, path=${path}, error=${errMsg}`);
     }
   }
-  return { paths, subagentLoaded };
+  return { paths, subagentPathFound };
 }
 
 /**
@@ -678,6 +680,13 @@ export class SessionStore {
       return { provider, registered: false, modelCount, authStatus: null, authCheck: null };
     }
 
+    // Excluded providers are unusable headlessly (create() rejects them). Skip
+    // checkAuth/getProviderAuthStatus to avoid OAuth side effects and noise.
+    if (HEADLESS_EXCLUDED_PROVIDERS.has(provider)) {
+      logger.debug(`[sidecar] PROVIDER_STATUS: provider=${provider}, registered=true, modelCount=0, auth=skipped_headless_excluded`);
+      return { provider, registered: true, modelCount: 0, authStatus: null, authCheck: null };
+    }
+
     let authCheck: ProviderStatus["authCheck"] = null;
     try {
       authCheck = (await this.modelRuntime!.checkAuth(provider)) ?? null;
@@ -769,7 +778,7 @@ export class SessionStore {
     // only correct with a single loaded instance — the internal runtime's (see
     // the internalRuntime field docstring). Subagent and Vertex have no such
     // shared state and are safe to load per user session.
-    const { paths: extensionPaths, subagentLoaded } = resolveExtensionPaths([
+    const { paths: extensionPaths, subagentPathFound } = resolveExtensionPaths([
       { path: VERTEX_EXTENSION, label: "Vertex" },
       { path: SUBAGENT_EXTENSION, label: "Subagent", isSubagent: true },
     ]);
@@ -808,8 +817,9 @@ export class SessionStore {
     }).filter((t): t is NonNullable<typeof t> => t != null);
 
     const tools = options.tools ?? [...DEFAULT_TOOLS];
-    // Reject sessions requesting subagent tool when the extension didn't load
-    if (tools.includes("subagent") && !subagentLoaded) {
+    // Fast-fail when the subagent extension file is missing before we build a loader.
+    // Actual load success is verified after reload() below.
+    if (tools.includes("subagent") && !subagentPathFound) {
       const err = new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
       (err as any).statusCode = 400;
       throw err;
@@ -843,6 +853,31 @@ export class SessionStore {
       systemPromptOverride: () => options.systemPrompt,
     });
     await loader.reload();
+
+    if (tools.includes("subagent")) {
+      const extResult = loader.getExtensions();
+      const subagentLoaded = extResult.extensions.some(
+        (ext) =>
+          ext.tools.has("subagent") ||
+          ext.path === SUBAGENT_EXTENSION ||
+          ext.resolvedPath === SUBAGENT_EXTENSION,
+      );
+      if (!subagentLoaded) {
+        const loadError = extResult.errors.find(
+          (e) =>
+            e.path === SUBAGENT_EXTENSION ||
+            e.path.includes("subagent") ||
+            (SUBAGENT_EXTENSION !== "" && e.path.endsWith("examples/extensions/subagent/index.ts")),
+        );
+        logger.error(
+          `[sidecar] SUBAGENT_LOAD_FAILED: path=${SUBAGENT_EXTENSION}, error=${loadError?.error ?? "extension_not_in_loader_result"}`,
+        );
+        const err = new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
+        (err as any).statusCode = 400;
+        throw err;
+      }
+    }
+
     logger.debug(`[sidecar] Session setup: id=${id}, extensions=${extensionPaths.length}, tools=${customTools.length} custom, cwd=${options.cwd}`);
 
     const { session } = await createAgentSession({
