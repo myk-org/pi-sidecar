@@ -83,7 +83,7 @@ Each option can also be set via an environment variable. Programmatic options ta
 | Option | Environment Variable | Default |
 |--------|---------------------|---------|
 | `port` | `SIDECAR_PORT` | `9100` |
-| `host` | `DEV_MODE=true` → `"0.0.0.0"` | `"127.0.0.1"` |
+| `host` | `SIDECAR_HOST`, else `DEV_MODE=true` → `"0.0.0.0"` | `"127.0.0.1"` |
 | `watchdogUrl` | `SIDECAR_WATCHDOG_URL` | *none* |
 
 See [Configuration and Environment Variables](configuration-reference.html) for the full list of environment variables.

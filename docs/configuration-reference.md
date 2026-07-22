@@ -42,14 +42,14 @@ SIDECAR_PORT=9200 node dist/server.js
 | **Default** | Not set (disabled) |
 | **Read by** | `startSidecar()` in `src/index.ts` |
 
-Controls two behaviors:
+Controls two behaviors (bind host precedence: `options.host` → `SIDECAR_HOST` → `DEV_MODE` fallback → localhost):
 
 | Behavior | `DEV_MODE` unset / not `"true"` | `DEV_MODE=true` |
 |----------|-------------------------------|-----------------|
-| **Bind address** | `127.0.0.1` (localhost only) | `0.0.0.0` (all interfaces) |
+| **Bind address** | Fallback `127.0.0.1` when `options.host` and `SIDECAR_HOST` are unset | Fallback `0.0.0.0` when `options.host` and `SIDECAR_HOST` are unset; explicit host overrides still win |
 | **`agent_dir` handling** | On loopback: validated (absolute existing directory) and passed to the Pi SDK. On non-loopback (e.g. `SIDECAR_HOST`): requests that include `agent_dir` get HTTP 400 | Must be a non-empty string (empty/whitespace → HTTP 400); otherwise value is **discarded** with an `AGENT_DIR_IGNORED` warning — prevents remote callers from steering resource loading |
 
-> **Warning:** Setting `DEV_MODE=true` exposes the sidecar on all network interfaces. The sidecar has **no authentication**. Only use this in trusted development environments.
+> **Warning:** When `DEV_MODE=true` and no host override is set, the sidecar binds `0.0.0.0` (all interfaces). `options.host` / `SIDECAR_HOST` take precedence over that fallback. The sidecar has **no authentication**. Only use non-loopback binds in trusted development environments.
 
 ```bash
 DEV_MODE=true SIDECAR_PORT=9100 node dist/server.js
