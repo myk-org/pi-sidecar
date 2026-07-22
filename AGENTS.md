@@ -193,7 +193,7 @@ Custom tools with an `http` property are automatically wrapped with the HTTP too
 
 ### 4. Localhost-only by default (trust model)
 
-The HTTP server binds to `127.0.0.1` unless `DEV_MODE=true` (which opens `0.0.0.0`). There is **no authentication** on the sidecar API — security relies on the network boundary. Do not add auth; instead, keep the server local and use the Python client from the same host.
+The HTTP server binds to `127.0.0.1` unless overridden by `startSidecar({ host })`, `SIDECAR_HOST`, or `DEV_MODE=true` (which opens `0.0.0.0`). Precedence is options → `SIDECAR_HOST` → `DEV_MODE` → localhost. There is **no authentication** on the sidecar API — security relies on the network boundary. Do not add auth; instead, keep the server local and use the Python client from the same host.
 
 `GET /models/:provider/status` is an intentional diagnostic endpoint under this same trust model: it returns registration state, model count, and raw `checkAuth()`/`getProviderAuthStatus()` output for a provider — including auth-configuration detail beyond a simple boolean — so operators can debug "why isn't provider X showing models" without grepping logs. This is deliberate, not an oversight: since the server is localhost-only with no auth by design, any caller who can reach this endpoint could already create sessions and use every configured provider's models directly, so the diagnostic detail here doesn't cross a new trust boundary. Do not scrub this endpoint's fields to a boolean — if a future requirement needs the API remotely reachable (`DEV_MODE=true` or otherwise), reduce it to a boolean at that point rather than preemptively.
 

@@ -138,7 +138,11 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   }
 
   const PORT = options?.port ?? parseInt(process.env.SIDECAR_PORT || "9100", 10);
-  const HOST = options?.host ?? (process.env.DEV_MODE === "true" ? "0.0.0.0" : "127.0.0.1");
+  // Precedence: explicit options.host → SIDECAR_HOST (start-sidecar.sh) → DEV_MODE → localhost.
+  const HOST =
+    options?.host ??
+    process.env.SIDECAR_HOST ??
+    (process.env.DEV_MODE === "true" ? "0.0.0.0" : "127.0.0.1");
 
   const store = new SessionStore();
 
