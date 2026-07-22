@@ -135,9 +135,10 @@ def _kill_build_process_tree(proc: subprocess.Popen[bytes]) -> None:
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        logger.warning(
-            "npm build process pid=%s did not exit after kill",
+        logger.error(
+            "npm build process tree still alive after kill: pid=%s error_message=%s",
             proc.pid,
+            "TimeoutExpired waiting for process tree exit",
             exc_info=True,
         )
 
