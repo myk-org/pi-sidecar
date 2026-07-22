@@ -115,12 +115,19 @@ _NPM_BUILD_TIMEOUT_S = 300
 
 
 def _kill_build_process_tree(proc: subprocess.Popen[bytes]) -> None:
-    """SIGKILL the whole session started with start_new_session=True (npm + tsc)."""
+    """Kill npm + descendants (Unix killpg; Windows taskkill /T)."""
     if proc.poll() is not None or proc.pid is None:
         return
     try:
         if hasattr(os, "killpg"):
             os.killpg(proc.pid, signal.SIGKILL)
+        elif os.name == "nt":
+            # /T terminates the whole tree; proc.kill() alone leaves node/tsc orphans.
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                check=False,
+                capture_output=True,
+            )
         else:
             proc.kill()
     except (ProcessLookupError, OSError):
@@ -128,7 +135,11 @@ def _kill_build_process_tree(proc: subprocess.Popen[bytes]) -> None:
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        logger.warning("npm build process pid=%s did not exit after SIGKILL", proc.pid)
+        logger.warning(
+            "npm build process pid=%s did not exit after kill",
+            proc.pid,
+            exc_info=True,
+        )
 
 
 def _unlink_partial_dist(dist_server: Path) -> None:
