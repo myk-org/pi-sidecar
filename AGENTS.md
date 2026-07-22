@@ -25,7 +25,7 @@ When asked to run them:
 uv run --group tests pytest -m e2e -n auto
 ```
 
-(`-n auto` = pytest-xdist; parallel cases — faster than serial. `E2E_TEST_CWD` is the base settings/cwd path (default `/tmp/e2e-pi-sidecar-tests`); under xdist each worker uses `{base}/{PYTEST_XDIST_WORKER}` — see `tests/e2e/README.md`. Under xdist each worker starts and stops its own sidecar on a free port — `sidecar_url` is session-scoped per worker, not one shared process. Workers use existing `dist/server.js` when present; otherwise a worker runs `npm run build` if `dist/server.js` is missing, serialized across workers via `fcntl` flock on `dist/.npm-build.lock`.)
+(`-n auto` = pytest-xdist; parallel cases — faster than serial. `E2E_TEST_CWD` is the base settings/cwd path (default `/tmp/e2e-pi-sidecar-tests`); under xdist each worker uses `{base}/{PYTEST_XDIST_WORKER}` — see `tests/e2e/README.md`. Under xdist each worker starts and stops its own sidecar on a free port — `sidecar_url` is session-scoped per worker, not one shared process. Workers use existing `dist/server.js` when present; otherwise a worker runs `npm run build` if `dist/server.js` is missing, serialized across workers via `fcntl` flock on `dist/.npm-build.lock` — Unix only; on Windows run e2e serially without `-n auto`.)
 
 ---
 

@@ -8,7 +8,7 @@ Excluded from default pytest and tox (`addopts = -m "not e2e"`).
 uv run --group tests pytest -m e2e -n auto
 ```
 
-`-n auto` (pytest-xdist) parallelizes the battery — faster than serial. Each xdist worker starts and stops its own sidecar (`sidecar_url` is session-scoped per worker, not shared). Serial runs honor `SIDECAR_HOST` / `SIDECAR_PORT`; under `-n auto` ports are always auto-picked. Workers reuse `dist/server.js` when present; if `dist/server.js` is missing, one worker runs `npm run build`, serialized across workers via `fcntl` flock on `dist/.npm-build.lock`.
+`-n auto` (pytest-xdist) parallelizes the battery — faster than serial. Each xdist worker starts and stops its own sidecar (`sidecar_url` is session-scoped per worker, not shared). Serial runs honor `SIDECAR_HOST` / `SIDECAR_PORT`; under `-n auto` ports are always auto-picked. Workers reuse `dist/server.js` when present; if `dist/server.js` is missing, one worker runs `npm run build`, serialized across workers via `fcntl` flock on `dist/.npm-build.lock` (Unix only — on Windows run e2e serially without `-n auto`).
 
 **Session flow**
 

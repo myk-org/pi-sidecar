@@ -19,7 +19,6 @@ sets the URL that ``SidecarClient()`` reads at construction.
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import json
 import logging
 import os
@@ -29,6 +28,11 @@ import subprocess
 import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows / non-Unix
+    fcntl = None  # type: ignore[assignment]
 
 import httpx
 import pytest
@@ -105,28 +109,44 @@ def _stop_sidecar(port: int, url: str) -> None:
         raise RuntimeError(f"sidecar still up at {url} after stop; kill on host: fuser -k {port}/tcp")
 
 
-def _ensure_dist_built() -> None:
-    """Build dist/server.js once across xdist workers via a cross-process flock.
+def _run_npm_build_if_missing(dist_server: Path) -> None:
+    if dist_server.is_file():
+        return
+    logger.info("building dist/server.js via npm run build")
+    subprocess.run(["npm", "run", "build"], cwd=REPO_ROOT, check=True)
+    logger.info("dist/server.js build complete")
+    if not dist_server.is_file():
+        raise RuntimeError(f"npm run build completed but {dist_server} is missing; check the build output for errors")
 
-    Always take the exclusive lock before trusting dist/server.js so a concurrent
-    npm build cannot leave another worker reading a mid-write file.
+
+def _ensure_dist_built() -> None:
+    """Ensure dist/server.js exists; on Unix serialize npm build via exclusive flock.
+
+    On Unix, take LOCK_EX on dist/.npm-build.lock before trusting dist/server.js so
+    concurrent xdist workers cannot race npm run build. On non-Unix (no fcntl), skip
+    flock — serial e2e only; parallel xdist is rejected at call time.
     """
     dist_dir = REPO_ROOT / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
     dist_server = dist_dir / "server.js"
+
+    if fcntl is None:
+        if os.environ.get("PYTEST_XDIST_WORKER"):
+            pytest.fail(
+                "live e2e under pytest-xdist requires Unix fcntl for cross-process "
+                "npm build locking; on Windows run e2e serially (omit -n auto)"
+            )
+        logger.warning(
+            "cross-process build locking unavailable (fcntl is Unix-only); ensuring dist/server.js without flock"
+        )
+        _run_npm_build_if_missing(dist_server)
+        return
+
     lock_path = dist_dir / ".npm-build.lock"
     with lock_path.open("a+", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         try:
-            if dist_server.is_file():
-                return
-            logger.info("building dist/server.js via npm run build")
-            subprocess.run(["npm", "run", "build"], cwd=REPO_ROOT, check=True)
-            logger.info("dist/server.js build complete")
-            if not dist_server.is_file():
-                raise RuntimeError(
-                    f"npm run build completed but {dist_server} is missing; check the build output for errors"
-                )
+            _run_npm_build_if_missing(dist_server)
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
