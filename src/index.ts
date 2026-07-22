@@ -60,11 +60,20 @@ export function routeMatch(url: string, pattern: string): Record<string, string>
       let decoded: string;
       try {
         decoded = decodeURIComponent(urlParts[i]);
-      } catch {
+      } catch (err) {
+        logger.warn(
+          `[sidecar] ROUTE_MATCH_DECODE_FAILED: segment=${sanitizeForLog(urlParts[i])}, param=${patternParts[i].slice(1)}`,
+          err,
+        );
         return null;
       }
       // Reject control characters (e.g. %0A) — prevents log forging and corrupted diagnostics.
-      if (/[\0-\x1f\x7f]/.test(decoded)) return null;
+      if (/[\0-\x1f\x7f]/.test(decoded)) {
+        logger.warn(
+          `[sidecar] ROUTE_MATCH_CONTROL_CHARS: segment=${sanitizeForLog(urlParts[i])}, param=${patternParts[i].slice(1)}, reason=decoded_control_chars`,
+        );
+        return null;
+      }
       params[patternParts[i].slice(1)] = decoded;
     } else if (patternParts[i] !== urlParts[i]) {
       return null;
