@@ -9,6 +9,8 @@
  * cannot apply it.
  *
  * Safe no-op when the nested copy is already >= 7.6.5 or absent.
+ * Replacement is best-effort: filesystem errors are warned and the install
+ * still exits 0 (never abort npm install over a locked/read-only tree).
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -71,9 +73,19 @@ if (cmp(floorVersion, FLOOR) < 0) {
 }
 
 const dest = dirname(nestedPkg);
-rmSync(dest, { recursive: true, force: true });
-mkdirSync(dirname(dest), { recursive: true });
-cpSync(floorRoot, dest, { recursive: true });
-console.log(
-  `[sidecar] protobufjs-floor: replaced nested protobufjs@${nestedVersion} with @${floorVersion} (CVE floor)`,
-);
+try {
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(floorRoot, dest, { recursive: true });
+  console.log(
+    `[sidecar] protobufjs-floor: replaced nested protobufjs@${nestedVersion} with @${floorVersion} (CVE floor)`,
+  );
+} catch (err) {
+  // Best-effort: never fail npm install over a locked/read-only node_modules tree.
+  const code = err && typeof err === "object" && "code" in err ? err.code : undefined;
+  console.warn(
+    `[sidecar] protobufjs-floor: failed to replace nested protobufjs@${nestedVersion} at ${dest}` +
+      `${code ? ` (code=${code})` : ""}: ${err instanceof Error ? err.message : String(err)}`,
+  );
+}
+process.exit(0);

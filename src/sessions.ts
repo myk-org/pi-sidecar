@@ -407,17 +407,24 @@ export class SessionStore {
    * Ensure the first discovery pass has finished (or failed with _ready set).
    * Startup kicks refreshModels() async after listen; GET /models and create()
    * must not serve empty acpx/cli caches during that window.
+   *
+   * If init failed before modelRuntime was assigned, throws a controlled 503
+   * instead of letting callers crash on `this.modelRuntime!`.
    */
   private async ensureDiscoveryComplete(): Promise<void> {
-    if (this._ready) {
-      await this.ensureInternalRuntime();
-      return;
+    if (!this._ready) {
+      try {
+        await this.refreshModels();
+      } catch {
+        // refreshModels sets _ready even on failure; check runtime below.
+      }
     }
-    try {
-      await this.refreshModels();
-    } catch {
-      // refreshModels sets _ready even on failure; list/create proceed with
-      // whatever catalog is available and surface discoveryError via /health.
+    if (!this.modelRuntime || !this.modelRegistry) {
+      const err = new Error(
+        "Model discovery failed; runtime unavailable. See GET /health.",
+      );
+      (err as Error & { statusCode?: number }).statusCode = 503;
+      throw err;
     }
   }
 

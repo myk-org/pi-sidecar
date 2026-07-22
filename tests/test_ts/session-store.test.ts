@@ -271,6 +271,18 @@ describe("SessionStore (mocked runtime)", () => {
     });
   });
 
+  it("getProviderStatus() returns controlled 503 when discovery left no runtime", async () => {
+    const store = new SessionStore() as any;
+    // Simulate failed init: ready but no modelRuntime/modelRegistry.
+    store._ready = true;
+    store.modelRuntime = undefined;
+    store.modelRegistry = undefined;
+    await assert.rejects(
+      () => store.getProviderStatus("google"),
+      (err: any) => err?.statusCode === 503 && /runtime unavailable/.test(String(err?.message)),
+    );
+  });
+
   it("create() rejects HEADLESS_EXCLUDED_PROVIDERS (e.g. github-copilot)", async () => {
     const store = new SessionStore() as any;
     installMockRuntime(store);
