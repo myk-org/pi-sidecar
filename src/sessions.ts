@@ -494,7 +494,7 @@ export class SessionStore {
    * Snapshot one extension model source (acpx or cli) for each configured agent.
    * Prefers the shared ModelRuntime's provider catalog (already populated by
    * the internal runtime's extension load / refresh()); falls back to a
-   * jiti-loaded discovery call only when that provider is missing or empty.
+   * jiti-loaded discovery call only when that provider is registered but empty.
    */
   private async snapshotAgentSource(
     agents: string[],
@@ -513,15 +513,17 @@ export class SessionStore {
         if (fromRuntime.length > 0) {
           return { models: fromRuntime, source: "modelRuntime" as const };
         }
-        // Only advertise fallback discoveries that ModelRuntime can actually
-        // resolve — create() later calls getModel() and would 500 otherwise.
-        const fromFallback = await fallback(agent);
+        // Unregistered providers cannot resolve models in create() — skip the
+        // expensive jiti fallback (up to DISCOVERY_TIMEOUT_MS) entirely.
         if (!provider) {
           logger.warn(
-            `[sidecar] ${label}_FALLBACK_DROPPED: agent=${agent}, provider=${providerId}, reason=provider_not_registered, discovered=${fromFallback.length}`,
+            `[sidecar] ${label}_FALLBACK_DROPPED: agent=${agent}, provider=${providerId}, reason=provider_not_registered, discovered=0`,
           );
           return { models: [], source: "fallback" as const };
         }
+        // Only advertise fallback discoveries that ModelRuntime can actually
+        // resolve — create() later calls getModel() and would 500 otherwise.
+        const fromFallback = await fallback(agent);
         const resolvable = fromFallback.filter((m) => Boolean(this.modelRuntime?.getModel(providerId, m.id)));
         if (resolvable.length < fromFallback.length) {
           logger.warn(
@@ -621,6 +623,11 @@ export class SessionStore {
       modelCount = this.cliModels.filter((m) => m.provider === provider).length;
     } else {
       modelCount = registeredProvider?.getModels().length ?? 0;
+    }
+
+    if (!registered) {
+      logger.debug(`[sidecar] PROVIDER_STATUS: provider=${provider}, registered=false, modelCount=${modelCount}`);
+      return { provider, registered: false, modelCount, authStatus: null, authCheck: null };
     }
 
     let authCheck: ProviderStatus["authCheck"] = null;

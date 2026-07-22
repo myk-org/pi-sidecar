@@ -29,8 +29,10 @@ async def main():
             print(f"{provider}:")
             print(f"  registered : {status['registered']}")
             print(f"  modelCount : {status['modelCount']}")
-            print(f"  authStatus : {status['authStatus']}")
-            print(f"  authCheck  : {status['authCheck']}")
+            # Do not print authStatus/authCheck — they may contain sensitive
+            # auth configuration (see SidecarClient.get_model_provider_status).
+            print(f"  authStatus : {'present' if status.get('authStatus') is not None else 'null'}")
+            print(f"  authCheck  : {'present' if status.get('authCheck') is not None else 'null'}")
         except httpx.HTTPStatusError as exc:
             body = {}
             try:

@@ -38,25 +38,22 @@ describe("SessionStore.snapshotAgentSource", () => {
     assert.deepEqual(result, runtimeModels);
   });
 
-  it("drops fallback discoveries when the provider isn't registered on ModelRuntime", async () => {
+  it("skips fallback discovery when the provider isn't registered on ModelRuntime", async () => {
     const store = new SessionStore() as any;
     store.modelRuntime = {
       getProvider: () => undefined,
       getModel: () => undefined,
     };
 
-    const fallbackModels = [{ id: "cursor:composer-2.5", name: "Composer", provider: "cli-cursor" }];
-    let fallbackCalledWith: string | undefined;
-    const fallback = async (agent: string) => {
-      fallbackCalledWith = agent;
-      return fallbackModels;
+    let fallbackCalled = false;
+    const fallback = async () => {
+      fallbackCalled = true;
+      return [{ id: "cursor:composer-2.5", name: "Composer", provider: "cli-cursor" }];
     };
 
     const result = await store.snapshotAgentSource(["cursor"], "cli", fallback);
 
-    assert.equal(fallbackCalledWith, "cursor");
-    // Advertising models that create() cannot resolve via getModel() is a bug —
-    // unregistered providers must yield an empty cache entry.
+    assert.equal(fallbackCalled, false, "unregistered providers must not run expensive fallback discovery");
     assert.deepEqual(result, []);
   });
 
