@@ -95,8 +95,9 @@ const inFlightDiscovery = new Map<string, Promise<DiscoveredModel[]>>();
 
 /**
  * Race a discovery call against DISCOVERY_TIMEOUT_MS; never throws — returns [] on failure.
- * On timeout the underlying Promise keeps running (no AbortSignal in discover APIs), but is
- * tracked in `inFlightDiscovery` so a later refresh joins it instead of starting a duplicate.
+ * On timeout the underlying Promise may keep running (no AbortSignal in discover APIs), but
+ * the inFlightDiscovery entry is evicted so later refreshes start a new discovery instead of
+ * joining a permanently hung promise. Late failures are still logged.
  */
 async function raceDiscovery(agent: string, kind: string, run: () => Promise<DiscoveredModel[]>): Promise<DiscoveredModel[]> {
   const key = `${kind}:${agent}`;
@@ -123,7 +124,15 @@ async function raceDiscovery(agent: string, kind: string, run: () => Promise<Dis
   } catch (err) {
     const timedOut = err instanceof Error && /timed out/i.test(err.message);
     if (timedOut) {
-      // Timeout won — discovery may still reject later; log that instead of swallowing silently.
+      // Evict the hung entry so a later refresh starts a new discovery instead of
+      // forever joining a promise that may never settle.
+      if (inFlightDiscovery.get(key) === discovery) {
+        inFlightDiscovery.delete(key);
+        logger.warn(
+          `[sidecar] ${kind.toUpperCase()}_DISCOVERY_EVICTED: agent=${agent}, reason=timeout, timeout_ms=${DISCOVERY_TIMEOUT_MS}`,
+        );
+      }
+      // Abandoned promise may still reject later — log that instead of swallowing silently.
       discovery.catch((lateErr) => {
         logger.warn(`[sidecar] ${kind.toUpperCase()}_DISCOVERY_LATE_FAILED: agent=${agent}`, lateErr);
       });
