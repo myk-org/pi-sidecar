@@ -47,7 +47,7 @@ Controls two behaviors:
 | Behavior | `DEV_MODE` unset / not `"true"` | `DEV_MODE=true` |
 |----------|-------------------------------|-----------------|
 | **Bind address** | `127.0.0.1` (localhost only) | `0.0.0.0` (all interfaces) |
-| **`agent_dir` handling** | Validated (must be absolute path to existing directory) and passed to the Pi SDK | Type-checked but value is **discarded** with a warning — prevents remote callers from steering resource loading |
+| **`agent_dir` handling** | On loopback: validated (absolute existing directory) and passed to the Pi SDK. On non-loopback (e.g. `SIDECAR_HOST`): requests that include `agent_dir` get HTTP 400 | Type-checked but value is **discarded** with an `AGENT_DIR_IGNORED` warning — prevents remote callers from steering resource loading |
 
 > **Warning:** Setting `DEV_MODE=true` exposes the sidecar on all network interfaces. The sidecar has **no authentication**. Only use this in trusted development environments.
 
@@ -296,7 +296,7 @@ All environment variables in one place:
 | Variable | Component | Default | Purpose |
 |----------|-----------|---------|---------|
 | `SIDECAR_PORT` | Server | `9100` | HTTP listen port |
-| `DEV_MODE` | Server | unset | Bind `0.0.0.0`, disable `agent_dir` enforcement |
+| `DEV_MODE` | Server | unset | Bind `0.0.0.0`; type-check then discard `agent_dir` |
 | `PI_SIDECAR_LOG_LEVEL` | Server + Client | `info` | Log verbosity (`debug` / `info` / `warn` / `error`) |
 | `ACPX_AGENTS` | Server | `""` | Comma-separated ACPX agents for model discovery |
 | `SIDECAR_WATCHDOG_URL` | Server | unset | Companion backend health URL (enables watchdog) |

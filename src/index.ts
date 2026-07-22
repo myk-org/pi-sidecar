@@ -402,15 +402,21 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           sendJson(res, 400, { error: "cwd must be a string" });
           return;
         }
+        let effectiveAgentDir: string | undefined = agent_dir;
         if (agent_dir !== undefined) {
           if (typeof agent_dir !== "string" || agent_dir.trim().length === 0) {
             logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be non-empty string`);
             sendJson(res, 400, { error: "agent_dir must be a non-empty string" });
             return;
           }
-          // Non-loopback binds (SIDECAR_HOST / DEV_MODE / startSidecar({ host })):
-          // reject agent_dir — remote callers must not steer resource loading.
-          if (!isLoopbackBindHost(trustBindHost)) {
+          // DEV_MODE: type-check only, discard value, warn (even on 0.0.0.0).
+          if (process.env.DEV_MODE === "true") {
+            logger.warn(
+              `[sidecar] AGENT_DIR_IGNORED: reason=dev_mode, host=${trustBindHost}`,
+            );
+            effectiveAgentDir = undefined;
+          } else if (!isLoopbackBindHost(trustBindHost)) {
+            // Non-loopback without DEV_MODE (e.g. SIDECAR_HOST): reject — no silent discard.
             logger.warn(
               `[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=not_allowed_on_non_loopback_bind, host=${trustBindHost}`,
             );
@@ -418,24 +424,25 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
               error: "agent_dir is not allowed when the sidecar is bound to a non-loopback address",
             });
             return;
-          }
-          if (!isAbsolute(agent_dir)) {
-            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be absolute path`);
-            sendJson(res, 400, { error: "agent_dir must be an absolute path" });
-            return;
-          }
-          try {
-            const stat = statSync(agent_dir);
-            if (!stat.isDirectory()) {
-              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=not a directory`);
-              sendJson(res, 400, { error: "agent_dir must be a directory" });
+          } else {
+            if (!isAbsolute(agent_dir)) {
+              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be absolute path`);
+              sendJson(res, 400, { error: "agent_dir must be an absolute path" });
               return;
             }
-          } catch (err: any) {
-            const reason = err?.code === "ENOENT" ? "does not exist" : err?.code === "EACCES" ? "permission denied" : `not accessible (${err?.code || "unknown"})`;
-            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=${reason}`);
-            sendJson(res, 400, { error: `agent_dir ${reason}` });
-            return;
+            try {
+              const stat = statSync(agent_dir);
+              if (!stat.isDirectory()) {
+                logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=not a directory`);
+                sendJson(res, 400, { error: "agent_dir must be a directory" });
+                return;
+              }
+            } catch (err: any) {
+              const reason = err?.code === "ENOENT" ? "does not exist" : err?.code === "EACCES" ? "permission denied" : `not accessible (${err?.code || "unknown"})`;
+              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=${reason}`);
+              sendJson(res, 400, { error: `agent_dir ${reason}` });
+              return;
+            }
           }
         }
         if (tools !== undefined) {
@@ -480,7 +487,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           model,
           systemPrompt: system_prompt,
           cwd: cwd || process.cwd(),
-          agentDir: agent_dir,
+          agentDir: effectiveAgentDir,
           tools,
           customTools: custom_tools,
         });

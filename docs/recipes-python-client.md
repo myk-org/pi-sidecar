@@ -155,7 +155,7 @@ The Pi SDK's `DefaultResourceLoader` discovers project-level resources from `{cw
 - If `cwd` is omitted, it defaults to the system temp directory (`tempfile.gettempdir()`)
 - The `agent_dir` parameter provides a separate path for user-level (global) resources — defaults to `/tmp/pi-sidecar-agent` when omitted
 
-> **Note:** `agent_dir` must be an absolute path pointing to an existing directory. In `DEV_MODE`, it is validated for type only and then discarded for security.
+> **Note:** `agent_dir` must be an absolute path pointing to an existing directory (loopback). In `DEV_MODE`, it is type-checked only and then discarded. On non-loopback binds without `DEV_MODE`, including `agent_dir` returns HTTP 400.
 
 ---
 
