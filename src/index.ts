@@ -57,16 +57,25 @@ export function routeMatch(url: string, pattern: string): Record<string, string>
   for (let i = 0; i < patternParts.length; i++) {
     if (patternParts[i].startsWith(":")) {
       // Decode after splitting so encoded slashes cannot alter route structure.
+      let decoded: string;
       try {
-        params[patternParts[i].slice(1)] = decodeURIComponent(urlParts[i]);
+        decoded = decodeURIComponent(urlParts[i]);
       } catch {
         return null;
       }
+      // Reject control characters (e.g. %0A) — prevents log forging and corrupted diagnostics.
+      if (/[\0-\x1f\x7f]/.test(decoded)) return null;
+      params[patternParts[i].slice(1)] = decoded;
     } else if (patternParts[i] !== urlParts[i]) {
       return null;
     }
   }
   return params;
+}
+
+/** Escape ASCII control characters so route params / ids are safe in single-line logs. */
+export function sanitizeForLog(value: string): string {
+  return value.replace(/[\0-\x1f\x7f]/g, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
 }
 
 export interface SidecarHandle {
@@ -197,7 +206,24 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         });
       });
       try {
-        await closed;
+        let closeTimer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          closed.then(() => {
+            if (closeTimer) clearTimeout(closeTimer);
+          }),
+          new Promise<void>((resolve) => {
+            closeTimer = setTimeout(() => {
+              logger.warn(
+                `[sidecar] SHUTDOWN_CLOSE_TIMEOUT: reason=${reason}, waited_ms=${SHUTDOWN_DRAIN_TIMEOUT_MS}`,
+              );
+              // Force-drop remaining connections so close() can finish and disposeAll runs.
+              if (typeof server.closeAllConnections === "function") {
+                server.closeAllConnections();
+              }
+              resolve();
+            }, SHUTDOWN_DRAIN_TIMEOUT_MS);
+          }),
+        ]);
         await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
         await store.disposeAll();
         logger.info(`[sidecar] SHUTDOWN_COMPLETE: reason=${reason}`);
@@ -264,15 +290,16 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // GET /models/:provider/status
       const statusParams = routeMatch(url, "/models/:provider/status");
       if (method === "GET" && statusParams) {
+        const providerLog = sanitizeForLog(statusParams.provider);
         const status = await store.getProviderStatus(statusParams.provider);
         if (!status.registered) {
           logger.warn(
-            `[sidecar] GET /models/${statusParams.provider}/status 404 ${Date.now() - requestStart}ms: registered=false`,
+            `[sidecar] GET /models/${providerLog}/status 404 ${Date.now() - requestStart}ms: registered=false`,
           );
           sendJson(res, 404, { error: `Provider '${statusParams.provider}' is not registered`, ...status });
           return;
         }
-        logger.debug(`[sidecar] GET /models/${statusParams.provider}/status 200 ${Date.now() - requestStart}ms: registered=${status.registered}, modelCount=${status.modelCount}`);
+        logger.debug(`[sidecar] GET /models/${providerLog}/status 200 ${Date.now() - requestStart}ms: registered=${status.registered}, modelCount=${status.modelCount}`);
         sendJson(res, 200, status);
         return;
       }
@@ -364,15 +391,16 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions/:id/prompt
       let params = routeMatch(url, "/sessions/:id/prompt");
       if (method === "POST" && params) {
+        const idLog = sanitizeForLog(params.id);
         const body = await parseBody(req);
         if (!body.message) {
-          logger.warn(`[sidecar] POST /sessions/${params.id}/prompt 400: message is required`);
+          logger.warn(`[sidecar] POST /sessions/${idLog}/prompt 400: message is required`);
           sendJson(res, 400, { error: "message is required" });
           return;
         }
-        logger.debug(`[sidecar] POST /sessions/${params.id}/prompt: message_length=${body.message.length}`);
+        logger.debug(`[sidecar] POST /sessions/${idLog}/prompt: message_length=${body.message.length}`);
         const result = await store.prompt(params.id, body.message);
-        logger.info(`[sidecar] POST /sessions/${params.id}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${result.error}` : ""}`);
+        logger.info(`[sidecar] POST /sessions/${idLog}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${result.error}` : ""}`);
         sendJson(res, 200, result);
         return;
       }
@@ -380,9 +408,10 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // POST /sessions/:id/abort
       params = routeMatch(url, "/sessions/:id/abort");
       if (method === "POST" && params) {
-        logger.debug(`[sidecar] POST /sessions/${params.id}/abort: processing`);
+        const idLog = sanitizeForLog(params.id);
+        logger.debug(`[sidecar] POST /sessions/${idLog}/abort: processing`);
         await store.abort(params.id);
-        logger.info(`[sidecar] POST /sessions/${params.id}/abort 200 ${Date.now() - requestStart}ms`);
+        logger.info(`[sidecar] POST /sessions/${idLog}/abort 200 ${Date.now() - requestStart}ms`);
         sendJson(res, 200, { aborted: true });
         return;
       }
@@ -390,9 +419,10 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // DELETE /sessions/:id
       params = routeMatch(url, "/sessions/:id");
       if (method === "DELETE" && params) {
-        logger.debug(`[sidecar] DELETE /sessions/${params.id}: action=delete`);
+        const idLog = sanitizeForLog(params.id);
+        logger.debug(`[sidecar] DELETE /sessions/${idLog}: action=delete`);
         const existed = store.delete(params.id);
-        logger.info(`[sidecar] DELETE /sessions/${params.id} 200 ${Date.now() - requestStart}ms: existed=${existed}`);
+        logger.info(`[sidecar] DELETE /sessions/${idLog} 200 ${Date.now() - requestStart}ms: existed=${existed}`);
         sendJson(res, 200, { deleted: true, existed });
         return;
       }

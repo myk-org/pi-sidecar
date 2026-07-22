@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { routeMatch } from "../../src/index.js";
+import { routeMatch, sanitizeForLog } from "../../src/index.js";
 
 describe("routeMatch", () => {
   it("matches exact path /health", () => {
@@ -99,5 +99,18 @@ describe("routeMatch", () => {
   it("returns null for malformed percent-encoding in a param", () => {
     const result = routeMatch("/models/bad%2/status", "/models/:provider/status");
     assert.equal(result, null);
+  });
+
+  it("returns null when a decoded param contains control characters (log-injection)", () => {
+    assert.equal(routeMatch("/models/evil%0Aprovider/status", "/models/:provider/status"), null);
+    assert.equal(routeMatch("/sessions/abc%0Did/prompt", "/sessions/:id/prompt"), null);
+  });
+});
+
+describe("sanitizeForLog", () => {
+  it("escapes ASCII control characters for single-line logs", () => {
+    assert.equal(sanitizeForLog("ok-id"), "ok-id");
+    assert.equal(sanitizeForLog("a\nb"), "a\\x0ab");
+    assert.equal(sanitizeForLog("a\rb"), "a\\x0db");
   });
 });

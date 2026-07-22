@@ -111,8 +111,6 @@ async function raceDiscovery(agent: string, kind: string, run: () => Promise<Dis
   } else {
     logger.debug(`[sidecar] ${kind.toUpperCase()}_DISCOVERY_REUSE: agent=${agent}`);
   }
-  // Prevent unhandled rejection if the timeout wins and discovery later fails.
-  discovery.catch(() => {});
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -123,6 +121,13 @@ async function raceDiscovery(agent: string, kind: string, run: () => Promise<Dis
     });
     return await Promise.race([discovery, timeout]);
   } catch (err) {
+    const timedOut = err instanceof Error && /timed out/i.test(err.message);
+    if (timedOut) {
+      // Timeout won — discovery may still reject later; log that instead of swallowing silently.
+      discovery.catch((lateErr) => {
+        logger.warn(`[sidecar] ${kind.toUpperCase()}_DISCOVERY_LATE_FAILED: agent=${agent}`, lateErr);
+      });
+    }
     logger.warn(`[sidecar] ${kind.toUpperCase()}_DISCOVERY_FALLBACK_FAILED: agent=${agent}`, err);
     return [];
   } finally {
