@@ -38,6 +38,7 @@ host_for_url() {
 }
 readonly HEALTH_URL="http://$(host_for_url "${HEALTH_HOST}"):${PORT}/health"
 readonly HEALTH_TIMEOUT=60
+readonly PID_FILE="${LOG_DIR}/sidecar-${PORT}.pid"
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -76,6 +77,22 @@ pid_on_port() {
     fi
 }
 
+read_pid_file() {
+    if [[ -f "${PID_FILE}" ]]; then
+        tr -d '[:space:]' < "${PID_FILE}" || true
+    fi
+}
+
+write_pid_file() {
+    local pid="$1"
+    ensure_log_dir
+    printf '%s\n' "${pid}" > "${PID_FILE}"
+}
+
+clear_pid_file() {
+    rm -f "${PID_FILE}" 2>/dev/null || true
+}
+
 wait_for_health() {
     local elapsed=0
     # Bound each probe so a hung TCP/connect cannot stall past HEALTH_TIMEOUT.
@@ -98,17 +115,45 @@ wait_for_health() {
 
 stop_sidecar() {
     local pid
-    pid="$(pid_on_port | tr -d '[:space:]')"
+    pid="$(read_pid_file)"
     if [[ -z "${pid}" ]]; then
+        pid="$(pid_on_port | tr -d '[:space:]')"
+    fi
+    if [[ -z "${pid}" ]]; then
+        # Port may still answer if a process outside this PID namespace holds it
+        # (e.g. host-network orphan). Surface that so callers don't assume down.
+        if curl -sf --connect-timeout 1 --max-time 2 "${HEALTH_URL}" >/dev/null 2>&1; then
+            echo "WARNING: ${HEALTH_URL} still responds but no PID is visible in this namespace." >&2
+            echo "Kill the orphan on the host, e.g.: fuser -k ${PORT}/tcp" >&2
+            clear_pid_file
+            return 1
+        fi
         echo "No sidecar running on port ${PORT}."
+        clear_pid_file
         return 0
     fi
+    if ! kill -0 "${pid}" 2>/dev/null; then
+        echo "Stale PID file (${pid}); clearing."
+        clear_pid_file
+        # Fall through to port-based stop once more
+        pid="$(pid_on_port | tr -d '[:space:]')"
+        if [[ -z "${pid}" ]]; then
+            if curl -sf --connect-timeout 1 --max-time 2 "${HEALTH_URL}" >/dev/null 2>&1; then
+                echo "WARNING: ${HEALTH_URL} still responds but no PID is visible in this namespace." >&2
+                echo "Kill the orphan on the host, e.g.: fuser -k ${PORT}/tcp" >&2
+                return 1
+            fi
+            echo "No sidecar running on port ${PORT}."
+            return 0
+        fi
+    fi
     echo "Stopping sidecar (PID ${pid}) on port ${PORT}…"
-    kill "${pid}"
+    kill "${pid}" 2>/dev/null || true
     # Wait up to 5 seconds for a clean exit.
     local i=0
     while (( i < 50 )); do
         if ! kill -0 "${pid}" 2>/dev/null; then
+            clear_pid_file
             echo "Sidecar stopped."
             return 0
         fi
@@ -117,6 +162,7 @@ stop_sidecar() {
     done
     echo "Sending SIGKILL…"
     kill -9 "${pid}" 2>/dev/null || true
+    clear_pid_file
     echo "Sidecar killed."
 }
 
@@ -147,6 +193,17 @@ start_foreground() {
 
 start_background() {
     ensure_log_dir
+    # Refuse to "start" against an already-healthy port we don't own — otherwise
+    # wait_for_health succeeds on a foreign/orphan listener and we leave a dead child.
+    if curl -sf --connect-timeout 1 --max-time 2 "${HEALTH_URL}" >/dev/null 2>&1; then
+        local existing
+        existing="$(read_pid_file)"
+        if [[ -n "${existing}" ]] && kill -0 "${existing}" 2>/dev/null; then
+            die "Sidecar already running on ${HOST}:${PORT} (PID ${existing}). Use --stop first."
+        fi
+        die "Port ${PORT} already serves ${HEALTH_URL} but no owned PID file. Stop the orphan (fuser -k ${PORT}/tcp) then retry."
+    fi
+
     local pid
     if [[ -f "${PKG_ROOT}/dist/server.js" ]]; then
         nohup env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
@@ -159,6 +216,7 @@ start_background() {
     else
         die "No sidecar entrypoint found under ${PKG_ROOT} (expected dist/server.js or src/server.ts)"
     fi
+    write_pid_file "${pid}"
     disown "${pid}" 2>/dev/null || disown || true
 
     # If health never becomes OK, die() would leave this nohup process orphaned.
@@ -173,11 +231,17 @@ start_background() {
             kill "${pid}" 2>/dev/null || true
             sleep 1
             kill -9 "${pid}" 2>/dev/null || true
+            clear_pid_file
         fi
     }
     trap cleanup_startup EXIT
 
     wait_for_health
+    # Confirm our child still owns the process — not a race against a foreign listener.
+    if ! kill -0 "${pid}" 2>/dev/null; then
+        clear_pid_file
+        die "Sidecar PID ${pid} exited during startup (port may already be in use). Check ${LOG_FILE}"
+    fi
     trap - EXIT
 
     echo "──────────────────────────────────────"
@@ -185,6 +249,7 @@ start_background() {
     echo "  URL : http://$(host_for_url "${HOST}"):${PORT}"
     echo "  PID : ${pid}"
     echo "  Log : ${LOG_FILE}"
+    echo "  Pidfile: ${PID_FILE}"
     echo "──────────────────────────────────────"
 }
 
