@@ -338,6 +338,8 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       // GET /models/:provider/status
       const statusParams = routeMatch(url, "/models/:provider/status");
       if (method === "GET" && statusParams) {
+        // Log provider as a key=value field — never interpolate into a URL-like
+        // path (decoded "%2F" → "/" would look like extra segments).
         const providerLog = sanitizeForLog(statusParams.provider);
         const status = redactProviderStatusAuth(
           await store.getProviderStatus(statusParams.provider),
@@ -345,12 +347,14 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         );
         if (!status.registered) {
           logger.warn(
-            `[sidecar] GET /models/${providerLog}/status 404 ${Date.now() - requestStart}ms: registered=false`,
+            `[sidecar] GET /models/:provider/status 404 ${Date.now() - requestStart}ms: provider=${providerLog}, registered=false`,
           );
           sendJson(res, 404, { error: `Provider '${statusParams.provider}' is not registered`, ...status });
           return;
         }
-        logger.debug(`[sidecar] GET /models/${providerLog}/status 200 ${Date.now() - requestStart}ms: registered=${status.registered}, modelCount=${status.modelCount}`);
+        logger.debug(
+          `[sidecar] GET /models/:provider/status 200 ${Date.now() - requestStart}ms: provider=${providerLog}, registered=${status.registered}, modelCount=${status.modelCount}`,
+        );
         sendJson(res, 200, status);
         return;
       }
