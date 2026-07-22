@@ -15,6 +15,8 @@
 # ---------------------------------------------------------
 set -euo pipefail
 
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PKG_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PORT="${SIDECAR_PORT:-9201}"
 readonly HOST="${SIDECAR_HOST:-127.0.0.1}"
 readonly LOG_DIR="/tmp/pi-work/pi-sidecar"
@@ -127,15 +129,32 @@ start_foreground() {
     echo "Starting sidecar in foreground on ${HOST}:${PORT}"
     echo "Log: ${LOG_FILE}"
     ensure_log_dir
-    exec env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
-        npx tsx src/server.ts 2>&1 | tee -a "${LOG_FILE}"
+    # Prefer compiled dist/server.js (published package); fall back to tsx+src for local checkout.
+    if [[ -f "${PKG_ROOT}/dist/server.js" ]]; then
+        exec env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
+            node "${PKG_ROOT}/dist/server.js" 2>&1 | tee -a "${LOG_FILE}"
+    elif [[ -f "${PKG_ROOT}/src/server.ts" ]]; then
+        exec env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
+            npx tsx "${PKG_ROOT}/src/server.ts" 2>&1 | tee -a "${LOG_FILE}"
+    else
+        die "No sidecar entrypoint found under ${PKG_ROOT} (expected dist/server.js or src/server.ts)"
+    fi
 }
 
 start_background() {
     ensure_log_dir
-    nohup env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
-        npx tsx src/server.ts >> "${LOG_FILE}" 2>&1 &
-    local pid=$!
+    local pid
+    if [[ -f "${PKG_ROOT}/dist/server.js" ]]; then
+        nohup env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
+            node "${PKG_ROOT}/dist/server.js" >> "${LOG_FILE}" 2>&1 &
+        pid=$!
+    elif [[ -f "${PKG_ROOT}/src/server.ts" ]]; then
+        nohup env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
+            npx tsx "${PKG_ROOT}/src/server.ts" >> "${LOG_FILE}" 2>&1 &
+        pid=$!
+    else
+        die "No sidecar entrypoint found under ${PKG_ROOT} (expected dist/server.js or src/server.ts)"
+    fi
     disown "${pid}" 2>/dev/null || disown || true
 
     # If health never becomes OK, die() would leave this nohup process orphaned.

@@ -31,7 +31,7 @@ pi-sidecar/                        (repo root = npm package root)
 │   ├── logger.ts                   # Log-level-aware logger wrapping console.* APIs (gated by PI_SIDECAR_LOG_LEVEL)
 │   └── watchdog.ts                 # Health-check poller; kills sidecar when backend is unresponsive
 ├── scripts/
-│   ├── start-sidecar.sh            # Sidecar startup script (canonical location). .dev/start-sidecar.sh, if present locally, is a gitignored (.dev/ is untracked) exec shim kept only for individual devs' muscle memory — it is not part of the published package.
+│   ├── start-sidecar.sh            # Sidecar startup script (canonical location). Prefers dist/server.js (published package); falls back to npx tsx src/server.ts for local checkout. .dev/start-sidecar.sh, if present locally, is a gitignored (.dev/ is untracked) exec shim kept only for individual devs' muscle memory — it is not part of the published package.
 │   └── enforce-protobufjs-floor.mjs # postinstall: replace shrinkwrap-sealed nested protobufjs below CVE floor
 ├── tests/
 │   ├── test_ts/                    # TypeScript sidecar tests

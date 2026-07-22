@@ -397,6 +397,30 @@ export class SessionStore {
     return this._discoveryError;
   }
 
+  /**
+   * In-flight refreshModels() so concurrent getModels()/create()/startup share
+   * one discovery pass instead of racing two snapshots.
+   */
+  private refreshInFlight: Promise<Array<{ id: string; name: string; provider: string }>> | undefined;
+
+  /**
+   * Ensure the first discovery pass has finished (or failed with _ready set).
+   * Startup kicks refreshModels() async after listen; GET /models and create()
+   * must not serve empty acpx/cli caches during that window.
+   */
+  private async ensureDiscoveryComplete(): Promise<void> {
+    if (this._ready) {
+      await this.ensureInternalRuntime();
+      return;
+    }
+    try {
+      await this.refreshModels();
+    } catch {
+      // refreshModels sets _ready even on failure; list/create proceed with
+      // whatever catalog is available and surface discoveryError via /health.
+    }
+  }
+
   count(): number {
     return this.sessions.size;
   }
@@ -461,7 +485,7 @@ export class SessionStore {
    */
   async getModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
     this.assertNotDisposed("getModels");
-    await this.ensureInternalRuntime();
+    await this.ensureDiscoveryComplete();
 
     // acpx-* / cli-* providers are registered directly on the shared ModelRuntime
     // by the internal runtime's extensions (see ensureInternalRuntime). Strip
@@ -568,6 +592,15 @@ export class SessionStore {
    */
   async refreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
     this.assertNotDisposed("refreshModels");
+    if (this.refreshInFlight) return this.refreshInFlight;
+
+    this.refreshInFlight = this.runRefreshModels().finally(() => {
+      this.refreshInFlight = undefined;
+    });
+    return this.refreshInFlight;
+  }
+
+  private async runRefreshModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
     logger.debug(`[sidecar] MODEL_DISCOVERY_START:`);
     try {
       const isFirstDiscovery = !this.internalRuntime;
@@ -615,7 +648,7 @@ export class SessionStore {
    */
   async getProviderStatus(provider: string): Promise<ProviderStatus> {
     this.assertNotDisposed("getProviderStatus");
-    await this.ensureInternalRuntime();
+    await this.ensureDiscoveryComplete();
 
     const registeredProvider = this.modelRuntime!.getProvider(provider);
     const registered = !!registeredProvider;
@@ -660,6 +693,7 @@ export class SessionStore {
 
   async create(options: CreateSessionOptions): Promise<string> {
     this.assertNotDisposed("create");
+    await this.ensureDiscoveryComplete();
     const id = randomUUID();
 
     if (!options.model) {

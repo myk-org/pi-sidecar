@@ -135,6 +135,34 @@ describe("SessionStore (mocked runtime)", () => {
     );
   });
 
+  it("getModels() triggers discovery when store is not yet ready", async () => {
+    const store = new SessionStore() as any;
+    installMockRuntime(store);
+    delete process.env.ACPX_AGENTS;
+    delete process.env.CLI_AGENTS;
+
+    assert.equal(store.ready, false);
+    const listed = await store.getModels();
+    assert.equal(store.ready, true);
+    assert.ok(listed.length >= 1);
+  });
+
+  it("concurrent getModels() before ready share one refreshModels pass", async () => {
+    const store = new SessionStore() as any;
+    const state = installMockRuntime(store);
+    delete process.env.ACPX_AGENTS;
+    delete process.env.CLI_AGENTS;
+
+    const [a, b] = await Promise.all([store.getModels(), store.getModels()]);
+    assert.deepEqual(
+      a.map((m: DiscoveredModel) => m.id).sort(),
+      b.map((m: DiscoveredModel) => m.id).sort(),
+    );
+    // Mock installs internalRuntime up front, so discovery hits ModelRuntime.refresh
+    // once; concurrent callers must join the same in-flight promise.
+    assert.equal(state.refreshCalls, 1);
+  });
+
   it("getProviderStatus() reports a registered builtin provider with a positive model count", async () => {
     const store = new SessionStore() as any;
     installMockRuntime(store);
@@ -215,7 +243,7 @@ describe("SessionStore (mocked runtime)", () => {
           "every concurrent refreshModels() call must return the same stable catalog",
         );
       }
-      assert.ok(state.refreshCalls >= 4); // 1 baseline + 3 concurrent
+      assert.ok(state.refreshCalls >= 2); // 1 baseline + ≥1 coalesced concurrent batch (inFlight join)
 
       const [idsToDelete, idsToKeep] = [sessionIds.slice(0, 3), sessionIds.slice(3)];
       const [deleteResults, finalRefresh] = await Promise.all([
