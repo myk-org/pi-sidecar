@@ -81,6 +81,7 @@ read_pid_file() {
     if [[ -f "${PID_FILE}" ]]; then
         tr -d '[:space:]' < "${PID_FILE}" || true
     fi
+    return 0
 }
 
 write_pid_file() {
