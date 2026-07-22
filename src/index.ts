@@ -49,6 +49,15 @@ function sendJson(res: ServerResponse, status: number, data: any): void {
   res.end(JSON.stringify(data));
 }
 
+/** Thrown when a matched route pattern has an invalid percent-encoded or control-char param. */
+export class BadRouteParamError extends Error {
+  readonly statusCode = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "BadRouteParamError";
+  }
+}
+
 export function routeMatch(url: string, pattern: string): Record<string, string> | null {
   const patternParts = pattern.split("/");
   const urlParts = url.split("?")[0].split("/");
@@ -65,14 +74,18 @@ export function routeMatch(url: string, pattern: string): Record<string, string>
           `[sidecar] ROUTE_MATCH_DECODE_FAILED: segment=${sanitizeForLog(urlParts[i])}, param=${patternParts[i].slice(1)}`,
           err,
         );
-        return null;
+        throw new BadRouteParamError(
+          `Invalid percent-encoding in route parameter '${patternParts[i].slice(1)}'`,
+        );
       }
       // Reject control characters (e.g. %0A) — prevents log forging and corrupted diagnostics.
       if (/[\0-\x1f\x7f]/.test(decoded)) {
         logger.warn(
           `[sidecar] ROUTE_MATCH_CONTROL_CHARS: segment=${sanitizeForLog(urlParts[i])}, param=${patternParts[i].slice(1)}, reason=decoded_control_chars`,
         );
-        return null;
+        throw new BadRouteParamError(
+          `Invalid control characters in route parameter '${patternParts[i].slice(1)}'`,
+        );
       }
       params[patternParts[i].slice(1)] = decoded;
     } else if (patternParts[i] !== urlParts[i]) {

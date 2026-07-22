@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
+
 import {
   type AgentSession,
   type AgentSessionRuntime,
@@ -147,13 +148,12 @@ const AGENT_NAME_PATTERN = /^[a-z0-9_-]+$/i;
 
 /**
  * Builds a fallback model-discovery function for one extension kind (acpx or
- * cli), used only when the shared ModelRuntime has no (or an empty)
- * `<kind>-<agent>` provider registered — e.g. an agent added to
- * ACPX_AGENTS/CLI_AGENTS after the internal runtime already loaded. Loads the
- * extension's own exported discovery function via jiti rather than
- * duplicating its discovery logic here. Shared by discoverAcpxModelsFallback/
- * discoverCliModelsFallback below, which previously duplicated this agent-name
- * validation + module-resolved gating + raceDiscovery() wrapping verbatim.
+ * cli). Invoked by snapshotAgentSource() only when the shared ModelRuntime has
+ * a registered `<kind>-<agent>` provider whose catalog is empty (e.g. refresh
+ * race / late agent). Unregistered providers skip this path entirely
+ * (FALLBACK_DROPPED) — create() cannot resolve models without a registered
+ * provider. Loads the extension's own exported discovery function via jiti
+ * rather than duplicating its discovery logic here.
  */
 function makeDiscoverFallback<T extends Record<string, unknown>>(
   kind: "acpx" | "cli",

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { routeMatch, sanitizeForLog } from "../../src/index.js";
+import { BadRouteParamError, routeMatch, sanitizeForLog } from "../../src/index.js";
 
 describe("routeMatch", () => {
   it("matches exact path /health", () => {
@@ -96,14 +96,23 @@ describe("routeMatch", () => {
     assert.equal(result.provider, "weird/provider");
   });
 
-  it("returns null for malformed percent-encoding in a param", () => {
-    const result = routeMatch("/models/bad%2/status", "/models/:provider/status");
-    assert.equal(result, null);
+  it("throws BadRouteParamError for malformed percent-encoding in a param", () => {
+    assert.throws(
+      () => routeMatch("/models/bad%2/status", "/models/:provider/status"),
+      (err: unknown) =>
+        err instanceof BadRouteParamError && err.statusCode === 400 && /percent-encoding/.test(err.message),
+    );
   });
 
-  it("returns null when a decoded param contains control characters (log-injection)", () => {
-    assert.equal(routeMatch("/models/evil%0Aprovider/status", "/models/:provider/status"), null);
-    assert.equal(routeMatch("/sessions/abc%0Did/prompt", "/sessions/:id/prompt"), null);
+  it("throws BadRouteParamError when a decoded param contains control characters (log-injection)", () => {
+    assert.throws(
+      () => routeMatch("/models/evil%0Aprovider/status", "/models/:provider/status"),
+      (err: unknown) => err instanceof BadRouteParamError && err.statusCode === 400,
+    );
+    assert.throws(
+      () => routeMatch("/sessions/abc%0Did/prompt", "/sessions/:id/prompt"),
+      (err: unknown) => err instanceof BadRouteParamError && err.statusCode === 400,
+    );
   });
 });
 
