@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import time
@@ -109,13 +110,76 @@ def _stop_sidecar(port: int, url: str) -> None:
         raise RuntimeError(f"sidecar still up at {url} after stop; kill on host: fuser -k {port}/tcp")
 
 
+# Cap hung npm/tsc so e2e (and xdist flock holders) cannot wait forever.
+_NPM_BUILD_TIMEOUT_S = 300
+
+
+def _kill_build_process_tree(proc: subprocess.Popen[bytes]) -> None:
+    """SIGKILL the whole session started with start_new_session=True (npm + tsc)."""
+    if proc.poll() is not None or proc.pid is None:
+        return
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
+    except (ProcessLookupError, OSError):
+        logger.warning("failed to kill npm build process tree pid=%s", proc.pid, exc_info=True)
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        logger.warning("npm build process pid=%s did not exit after SIGKILL", proc.pid)
+
+
+def _unlink_partial_dist(dist_server: Path) -> None:
+    if not dist_server.is_file():
+        return
+    try:
+        dist_server.unlink()
+        logger.warning("removed partial %s after failed/timed-out npm build", dist_server)
+    except OSError:
+        logger.error("failed to remove partial %s", dist_server, exc_info=True)
+
+
 def _run_npm_build_if_missing(dist_server: Path) -> None:
     if dist_server.is_file():
         return
-    logger.info("building dist/server.js via npm run build")
-    subprocess.run(["npm", "run", "build"], cwd=REPO_ROOT, check=True)
+    logger.info("building dist/server.js via npm run build (timeout=%ss)", _NPM_BUILD_TIMEOUT_S)
+    # New session so timeout can killpg npm + tsc grandchildren (avoids orphan races under flock).
+    proc = subprocess.Popen(
+        ["npm", "run", "build"],
+        cwd=REPO_ROOT,
+        start_new_session=True,
+    )
+    try:
+        proc.wait(timeout=_NPM_BUILD_TIMEOUT_S)
+    except subprocess.TimeoutExpired as exc:
+        logger.error(
+            "npm run build timed out after %ss while producing %s; killing process group",
+            _NPM_BUILD_TIMEOUT_S,
+            dist_server,
+            exc_info=True,
+        )
+        _kill_build_process_tree(proc)
+        _unlink_partial_dist(dist_server)
+        raise RuntimeError(
+            f"npm run build timed out after {_NPM_BUILD_TIMEOUT_S}s; "
+            f"{dist_server} not ready (partial artifact removed if present)"
+        ) from exc
+    if proc.returncode != 0:
+        logger.error(
+            "npm run build failed exit=%s while producing %s",
+            proc.returncode,
+            dist_server,
+        )
+        _unlink_partial_dist(dist_server)
+        raise subprocess.CalledProcessError(proc.returncode or 1, ["npm", "run", "build"])
     logger.info("dist/server.js build complete")
     if not dist_server.is_file():
+        logger.error(
+            "npm run build finished but %s is still missing; check build output",
+            dist_server,
+        )
         raise RuntimeError(f"npm run build completed but {dist_server} is missing; check the build output for errors")
 
 
