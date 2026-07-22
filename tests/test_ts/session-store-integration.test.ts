@@ -41,14 +41,20 @@ describe("SessionStore internal runtime integration", () => {
   it("refreshModels() creates the internal runtime and lists builtin models", async () => {
     const models = await store.refreshModels();
     assert.ok(Array.isArray(models));
-    assert.ok(models.length > 0, "should list at least the builtin catalog");
-    assert.ok(models.some((m) => m.provider === "google"), "should include google builtins");
+    // getModels() uses ModelRegistry.getAvailable(), which is auth-gated.
+    // CI runners often have no provider API keys, so the available catalog can
+    // be empty even though builtin providers are registered with a static catalog.
+    // Assert runtime readiness + provider registration instead of requiring
+    // a non-empty available list.
+    assert.equal(store.ready, true);
+    assert.equal(store.discoveryError, null);
     // No agents configured — acpx-*/cli-* sources must be empty.
     assert.ok(!models.some((m) => m.provider.startsWith("acpx-")));
     assert.ok(!models.some((m) => m.provider.startsWith("cli-")));
 
-    assert.equal(store.ready, true);
-    assert.equal(store.discoveryError, null);
+    const google = await store.getProviderStatus("google");
+    assert.equal(google.registered, true);
+    assert.ok(google.modelCount > 0, "google provider static catalog must be non-empty");
   });
 
   it("refreshModels() can be called again without recreating the internal runtime", async () => {
@@ -109,8 +115,11 @@ describe("SessionStore internal runtime integration", () => {
   describe("concurrent sessions interleaved with refresh", () => {
     it("keeps the model catalog stable while sessions are created/deleted concurrently with refreshModels()", async () => {
       const baseline = await store.refreshModels();
-      const googleModel = baseline.find((m) => m.provider === "google");
-      assert.ok(googleModel, "precondition: at least one google builtin model must be available");
+      // create() resolves builtins via ModelRegistry.find / getModel even when
+      // getAvailable() is empty (CI without API keys). Prefer an available
+      // google id when present; otherwise use a well-known static catalog id.
+      const googleModelId =
+        baseline.find((m) => m.provider === "google")?.id ?? "gemini-2.5-flash";
       const baselineIds = baseline.map((m) => `${m.provider}/${m.id}`).sort();
 
       // Fire create()/refreshModels()/getModels() concurrently — the internal
@@ -118,7 +127,7 @@ describe("SessionStore internal runtime integration", () => {
       // refreshModels() calls must not race create()'s reads of the acpx/cli
       // caches (see the internalRuntime field docstring in src/sessions.ts).
       const concurrentCreates = Array.from({ length: 5 }, () =>
-        store.create({ provider: "google", model: googleModel!.id, systemPrompt: "concurrent test", cwd: "/tmp" }),
+        store.create({ provider: "google", model: googleModelId, systemPrompt: "concurrent test", cwd: "/tmp" }),
       );
       const concurrentRefreshes = Array.from({ length: 3 }, () => store.refreshModels());
 
