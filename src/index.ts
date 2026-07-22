@@ -409,7 +409,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             sendJson(res, 400, { error: "agent_dir must be a non-empty string" });
             return;
           }
-          // DEV_MODE: type-check only, discard value, warn (even on 0.0.0.0).
+          // DEV_MODE: after non-empty string check, discard value and warn (even on 0.0.0.0).
           if (process.env.DEV_MODE === "true") {
             logger.warn(
               `[sidecar] AGENT_DIR_IGNORED: reason=dev_mode, host=${trustBindHost}`,

@@ -194,7 +194,7 @@ curl -s -X POST http://127.0.0.1:9100/sessions \
 
 The `agent_dir` must be an absolute path pointing to an existing directory. When omitted, it defaults to `/tmp/pi-sidecar-agent`.
 
-> **Warning:** In `DEV_MODE=true`, `agent_dir` is type-checked then discarded with an `AGENT_DIR_IGNORED` warning. On non-loopback binds without `DEV_MODE` (e.g. `SIDECAR_HOST`), including `agent_dir` returns HTTP 400.
+> **Warning:** In `DEV_MODE=true`, `agent_dir` must be a non-empty string (empty/whitespace → HTTP 400); a valid value is then discarded with an `AGENT_DIR_IGNORED` warning. On non-loopback binds without `DEV_MODE` (e.g. `SIDECAR_HOST`), including `agent_dir` returns HTTP 400.
 
 ---
 

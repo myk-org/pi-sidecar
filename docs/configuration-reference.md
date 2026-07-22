@@ -47,7 +47,7 @@ Controls two behaviors:
 | Behavior | `DEV_MODE` unset / not `"true"` | `DEV_MODE=true` |
 |----------|-------------------------------|-----------------|
 | **Bind address** | `127.0.0.1` (localhost only) | `0.0.0.0` (all interfaces) |
-| **`agent_dir` handling** | On loopback: validated (absolute existing directory) and passed to the Pi SDK. On non-loopback (e.g. `SIDECAR_HOST`): requests that include `agent_dir` get HTTP 400 | Type-checked but value is **discarded** with an `AGENT_DIR_IGNORED` warning — prevents remote callers from steering resource loading |
+| **`agent_dir` handling** | On loopback: validated (absolute existing directory) and passed to the Pi SDK. On non-loopback (e.g. `SIDECAR_HOST`): requests that include `agent_dir` get HTTP 400 | Must be a non-empty string (empty/whitespace → HTTP 400); otherwise value is **discarded** with an `AGENT_DIR_IGNORED` warning — prevents remote callers from steering resource loading |
 
 > **Warning:** Setting `DEV_MODE=true` exposes the sidecar on all network interfaces. The sidecar has **no authentication**. Only use this in trusted development environments.
 
@@ -297,7 +297,7 @@ All environment variables in one place:
 |----------|-----------|---------|---------|
 | `SIDECAR_PORT` | Server | `9100` | HTTP listen port |
 | `SIDECAR_HOST` | Server | unset (`DEV_MODE? 0.0.0.0 : 127.0.0.1`) | Bind override; precedence `options.host` → `SIDECAR_HOST` → `DEV_MODE` → localhost; non-loopback rejects `agent_dir` with HTTP 400 (unless `DEV_MODE`) |
-| `DEV_MODE` | Server | unset | When `SIDECAR_HOST`/`options.host` unset: bind `0.0.0.0`. Always type-checks then discards `agent_dir` (any host) |
+| `DEV_MODE` | Server | unset | When `SIDECAR_HOST`/`options.host` unset: bind `0.0.0.0`. Non-empty `agent_dir` is discarded (any host); empty/whitespace still HTTP 400 |
 | `PI_SIDECAR_LOG_LEVEL` | Server + Client | `info` | Log verbosity (`debug` / `info` / `warn` / `error`) |
 | `ACPX_AGENTS` | Server | `""` | Comma-separated ACPX agents for model discovery |
 | `SIDECAR_WATCHDOG_URL` | Server | unset | Companion backend health URL (enables watchdog) |
