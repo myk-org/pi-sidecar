@@ -34,6 +34,8 @@ describe("compareVersions", () => {
   });
 
   it("treats unparsable versions as equal (does not throw)", () => {
+    // compareVersions stays permissive for advisory callers; assertPiVersionFloor
+    // separately rejects unparsable installed versions (fail-closed).
     assert.equal(compareVersions("not-a-version", "0.81.1"), 0);
     assert.equal(compareVersions("0.81.1", "also-not-a-version"), 0);
   });

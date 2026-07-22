@@ -56,7 +56,12 @@ export function routeMatch(url: string, pattern: string): Record<string, string>
   const params: Record<string, string> = {};
   for (let i = 0; i < patternParts.length; i++) {
     if (patternParts[i].startsWith(":")) {
-      params[patternParts[i].slice(1)] = urlParts[i];
+      // Decode after splitting so encoded slashes cannot alter route structure.
+      try {
+        params[patternParts[i].slice(1)] = decodeURIComponent(urlParts[i]);
+      } catch {
+        return null;
+      }
     } else if (patternParts[i] !== urlParts[i]) {
       return null;
     }
@@ -142,6 +147,45 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   // before touching the store, so in-flight teardown never races a request
   // that would otherwise call into a disposed/disposing SessionStore.
   let draining = false;
+  // Count handlers that passed the draining gate. Shutdown awaits this
+  // reaching 0 (with a timeout) before disposeAll(), so prompt/abort that
+  // already entered the handler finish before sessions are torn down.
+  let activeRequests = 0;
+  const SHUTDOWN_DRAIN_TIMEOUT_MS = 30_000;
+  // Declared early so shutdownSidecar can clear them; assigned after createServer.
+  let cleanupInterval: ReturnType<typeof setInterval> | undefined;
+  let stopWatchdog: (() => void) | undefined;
+
+  async function waitForIdleRequests(timeoutMs: number): Promise<void> {
+    const start = Date.now();
+    while (activeRequests > 0 && Date.now() - start < timeoutMs) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (activeRequests > 0) {
+      logger.warn(
+        `[sidecar] SHUTDOWN_DRAIN_TIMEOUT: activeRequests=${activeRequests}, waited_ms=${timeoutMs}`,
+      );
+    }
+  }
+
+  async function shutdownSidecar(reason: string): Promise<void> {
+    logger.info(`[sidecar] Shutting down: reason=${reason}`);
+    draining = true;
+    stopWatchdog?.();
+    if (cleanupInterval !== undefined) clearInterval(cleanupInterval);
+    // Stop accepting new connections, then wait for in-flight handlers, then
+    // dispose the store. Disposing before handlers finish races prompt/abort.
+    const closed = new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    await closed;
+    await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
+    await store.disposeAll();
+    logger.info("[sidecar] Shut down");
+  }
 
   const server = createServer(async (req, res) => {
     const method = req.method || "GET";
@@ -154,6 +198,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       return;
     }
 
+    activeRequests++;
     try {
       // GET /health
       if (method === "GET" && url === "/health") {
@@ -342,6 +387,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("Payload too large") ? 413
         : message.includes("Invalid JSON") ? 400
         : message.includes("is busy") ? 409
+        : message.includes("shutting down") ? 503
         : message.includes("not found") ? 404
         : 500);
       if (status === 500) {
@@ -350,17 +396,17 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`);
       }
       sendJson(res, status, { error: message });
+    } finally {
+      activeRequests--;
     }
   });
 
   // Stale session cleanup every 10 minutes
-  const cleanupInterval = setInterval(() => {
+  cleanupInterval = setInterval(() => {
     logger.debug(`[sidecar] Running stale session cleanup`);
     const cleaned = store.cleanupStale(60 * 60 * 1000); // 1 hour
     logger.debug(`[sidecar] Stale cleanup result: removed=${cleaned}`);
   }, 10 * 60 * 1000);
-
-  let stopWatchdog: (() => void) | undefined;
 
   server.listen(PORT, HOST, () => {
     logger.info(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
@@ -370,14 +416,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       logger.info(`[sidecar] Watchdog enabled: url=${watchdogUrl}`);
       stopWatchdog = startWatchdog(watchdogUrl, async () => {
         logger.warn("[sidecar] Backend unresponsive, shutting down");
-        // Stop accepting requests before tearing down the store — see the
-        // `draining` declaration above and disposeAll()'s docstring for why
-        // this order matters.
-        draining = true;
-        stopWatchdog?.();
-        clearInterval(cleanupInterval);
-        server.close();
-        await store.disposeAll();
+        await shutdownSidecar("watchdog");
       }, options?.watchdogOptions);
     } else {
       logger.info("[sidecar] Watchdog disabled (no SIDECAR_WATCHDOG_URL)");
@@ -391,25 +430,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
 
   return {
     close: async () => {
-      logger.info("[sidecar] Shutting down...");
-      // Stop accepting requests before tearing down the store: set `draining`
-      // first (in-flight new requests 503 immediately), then start the server's
-      // close (stops accepting new connections), then dispose the store while
-      // the server winds down existing connections, and finally await the
-      // server's own close completion. See disposeAll()'s docstring for why
-      // the store must never be disposed while requests could still reach it.
-      draining = true;
-      stopWatchdog?.();
-      clearInterval(cleanupInterval);
-      const closed = new Promise<void>((resolve, reject) => {
-        server.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      await store.disposeAll();
-      await closed;
-      logger.info("[sidecar] Shut down");
+      await shutdownSidecar("close");
     },
   };
 }

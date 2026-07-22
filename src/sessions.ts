@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import {
   type AgentSession,
@@ -60,7 +61,7 @@ const ACPX_EXTENSION = resolveAndLog("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestr
 const CLI_PROVIDER_EXTENSION = resolveAndLog("SIDECAR_CLI_PROVIDER_EXTENSION_PATH", "pi-orchestrator-config", "extensions/cli-provider/index.ts");
 /** discover.ts lives next to the cli-provider entry (same override dir when SIDECAR_CLI_PROVIDER_EXTENSION_PATH is set). */
 const CLI_DISCOVER_MODULE = CLI_PROVIDER_EXTENSION
-  ? `${CLI_PROVIDER_EXTENSION.slice(0, CLI_PROVIDER_EXTENSION.lastIndexOf("/"))}/discover.ts`
+  ? join(dirname(CLI_PROVIDER_EXTENSION), "discover.ts")
   : "";
 /** acpx-provider exports discoverAcpxModels directly from its entry file — no separate discover.ts. */
 const ACPX_DISCOVER_MODULE = ACPX_EXTENSION;
@@ -748,6 +749,7 @@ export class SessionStore {
   }
 
   async prompt(id: string, message: string): Promise<{ text: string; usage: any; error?: string }> {
+    this.assertNotDisposed("prompt");
     const entry = this.sessions.get(id);
     if (!entry) throw new Error(`Session ${id} not found`);
 
@@ -969,6 +971,7 @@ export class SessionStore {
   }
 
   async abort(id: string): Promise<void> {
+    this.assertNotDisposed("abort");
     const entry = this.sessions.get(id);
     if (!entry) throw new Error(`Session ${id} not found`);
     logger.debug(`[sidecar] Aborting session: ${id}, inFlight=${entry.inFlight}`);

@@ -19,7 +19,13 @@ readonly PORT="${SIDECAR_PORT:-9201}"
 readonly HOST="${SIDECAR_HOST:-127.0.0.1}"
 readonly LOG_DIR="/tmp/pi-work/pi-sidecar"
 readonly LOG_FILE="${LOG_DIR}/sidecar.log"
-readonly HEALTH_URL="http://${HOST}:${PORT}/health"
+# Bind host may be a wildcard (0.0.0.0 / ::); health probes need a connectable loopback.
+case "${HOST}" in
+    0.0.0.0) readonly HEALTH_HOST="127.0.0.1" ;;
+    ::)      readonly HEALTH_HOST="::1" ;;
+    *)       readonly HEALTH_HOST="${HOST}" ;;
+esac
+readonly HEALTH_URL="http://${HEALTH_HOST}:${PORT}/health"
 readonly HEALTH_TIMEOUT=60
 
 # ── Helpers ──────────────────────────────────────────────

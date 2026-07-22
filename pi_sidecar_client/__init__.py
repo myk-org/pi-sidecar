@@ -152,7 +152,7 @@ class SidecarClient:
         logger.info("Model refresh complete: %d models available", len(models))
         return models
 
-    async def get_model_provider_status(self, provider: str) -> dict:
+    async def get_model_provider_status(self: "SidecarClient", provider: str) -> dict:
         """Get registration, model count, and auth status for a single provider.
 
         Args:
@@ -187,7 +187,13 @@ class SidecarClient:
         resp = await self._client.get(f"/models/{quote(provider, safe='')}/status")
         resp.raise_for_status()
         status = resp.json()
-        logger.debug("Provider status fetched: provider=%s, status=%s", provider, status)
+        # Do not log authStatus/authCheck — may contain sensitive auth details.
+        logger.debug(
+            "Provider status fetched: provider=%s, registered=%s, modelCount=%s",
+            provider,
+            status.get("registered"),
+            status.get("modelCount"),
+        )
         return status
 
     async def create_session(

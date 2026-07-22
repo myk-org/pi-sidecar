@@ -89,4 +89,15 @@ describe("routeMatch", () => {
     const result = routeMatch("/models/google/status/extra", "/models/:provider/status");
     assert.equal(result, null);
   });
+
+  it("decodes percent-encoded :provider segments", () => {
+    const result = routeMatch("/models/weird%2Fprovider/status", "/models/:provider/status");
+    assert.ok(result);
+    assert.equal(result.provider, "weird/provider");
+  });
+
+  it("returns null for malformed percent-encoding in a param", () => {
+    const result = routeMatch("/models/bad%2/status", "/models/:provider/status");
+    assert.equal(result, null);
+  });
 });

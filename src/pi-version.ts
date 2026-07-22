@@ -83,6 +83,14 @@ export function assertPiVersionFloor(): void {
     logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: reason=could_not_resolve_installed_version, required>=${MIN_PI_VERSION}`);
     throw new Error(`Could not resolve installed @earendil-works/pi-coding-agent version; requires >=${MIN_PI_VERSION}`);
   }
+  // Fail closed: compareVersions treats unparsable inputs as equal (0), which
+  // would incorrectly pass the floor check — reject unparsable versions here.
+  if (!parseVersion(installed)) {
+    logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: reason=unparsable_installed_version, installed=${installed}, required>=${MIN_PI_VERSION}`);
+    throw new Error(
+      `Could not parse installed @earendil-works/pi-coding-agent version '${installed}'; requires >=${MIN_PI_VERSION}`,
+    );
+  }
   if (compareVersions(installed, MIN_PI_VERSION) < 0) {
     logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: installed=${installed}, required>=${MIN_PI_VERSION}`);
     throw new Error(`@earendil-works/pi-coding-agent ${installed} is below the required floor ${MIN_PI_VERSION}. Upgrade the dependency.`);
