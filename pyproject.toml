@@ -18,7 +18,16 @@ include = ["pi_sidecar_client*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests/test_python"]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests/test_python", "tests/e2e"]
+# Live e2e is opt-in (only when explicitly requested): uv run --group tests pytest -m e2e -n auto
+addopts = ["-m", "not e2e"]
+markers = [
+    "e2e: live end-to-end tests against a real pi-sidecar (opt-in; excluded by default)",
+]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(levelname)s %(name)s: %(message)s"
 
 [tool.ruff]
 preview = true
@@ -54,7 +63,8 @@ module = "simple_logger.*"
 ignore_missing_imports = true
 
 [dependency-groups]
-dev = [
+tests = [
     "pytest",
     "pytest-asyncio",
+    "pytest-xdist",
 ]

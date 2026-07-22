@@ -1,22 +1,41 @@
 import asyncio
 import inspect
 import os
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 import httpx
 from simple_logger.logger import get_logger
 
 logger = get_logger(name=__name__, level=os.environ.get("PI_SIDECAR_LOG_LEVEL", "INFO"))
 
-SIDECAR_URL = os.environ.get("SIDECAR_URL", "http://127.0.0.1:9100")
+DEFAULT_SIDECAR_URL = "http://127.0.0.1:9100"
 DEFAULT_CWD = tempfile.gettempdir()
+
+
+def _default_sidecar_url() -> str:
+    """Return the sidecar base URL from SIDECAR_URL env or DEFAULT_SIDECAR_URL."""
+    return os.environ.get("SIDECAR_URL", DEFAULT_SIDECAR_URL)
+
+
+def _normalize_sidecar_url(value: str) -> str:
+    """Normalize a sidecar base URL (trailing slashes stripped, like SidecarClient)."""
+    return value.rstrip("/")
+
+
+if TYPE_CHECKING:
+    # Runtime value is provided by _PiSidecarClientModule.__getattr__ (reads SIDECAR_URL env).
+    SIDECAR_URL: str
 
 __all__ = [
     "AIResult",
     "AITokenUsage",
+    "SIDECAR_URL",
     "SidecarClient",
     "call_ai",
     "call_ai_once",
@@ -118,11 +137,12 @@ def _map_provider_model(provider: str, model: str) -> tuple[str, str]:
 class SidecarClient:
     """HTTP client for the Pi SDK sidecar service."""
 
-    def __init__(self, base_url: str = SIDECAR_URL):
-        self._base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=600.0)
+    def __init__(self, base_url: str | None = None, *, verify: bool | str = True):
+        # When base_url is omitted, re-read SIDECAR_URL from the environment at construction time.
+        self._base_url = (base_url if base_url is not None else _default_sidecar_url()).rstrip("/")
+        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=600.0, verify=verify)
         self._closed = False
-        logger.debug("SidecarClient created: url=%s, timeout=600s", self._base_url)
+        logger.debug("SidecarClient created: url=%s, timeout=600s, verify=%s", self._base_url, verify)
 
     async def health(self) -> dict:
         """Check sidecar health."""
@@ -150,6 +170,52 @@ class SidecarClient:
         models = resp.json().get("models", [])
         logger.info("Model refresh complete: %d models available", len(models))
         return models
+
+    async def get_model_provider_status(self: "SidecarClient", provider: str) -> dict:
+        """Get registration, model count, and auth status for a single provider.
+
+        Args:
+            provider: Sidecar provider id, e.g. ``"google"``, ``"acpx-cursor"``,
+                or ``"cli-cursor"``. URL-encoded before being placed in the path
+                so ids containing reserved characters (e.g. ``/``) can't alter
+                the request path.
+
+        Returns:
+            A dict mirroring the sidecar's ``GET /models/:provider/status``
+            response (see ``ProviderStatus`` in ``src/sessions.ts``):
+
+            - ``provider`` (str): the provider id that was queried.
+            - ``registered`` (bool): whether the provider is currently
+              registered on the shared ``ModelRuntime``.
+            - ``modelCount`` (int): number of models known for this provider
+              (from the acpx/cli snapshot cache for ``acpx-*``/``cli-*``
+              providers, or the live catalog for builtins).
+            - ``authStatus`` (dict | None): result of
+              ``ModelRuntime.getProviderAuthStatus()``, or ``None`` if that
+              call raised. On non-loopback sidecar binds the response is
+              redacted to ``{"configured": bool}`` only (no ``source``/``label``).
+            - ``authCheck`` (dict | None): result of
+              ``ModelRuntime.checkAuth()``, or ``None`` if unregistered or
+              that call raised. On non-loopback binds redacted to
+              ``{"type": ...}`` only (no ``source``).
+
+        Raises:
+            httpx.HTTPStatusError: If the provider is not registered (HTTP
+                404 — response body still includes the status fields) or on
+                any other non-2xx response.
+        """
+        logger.debug("Fetching provider status: provider=%s", provider)
+        resp = await self._client.get(f"/models/{quote(provider, safe='')}/status")
+        resp.raise_for_status()
+        status = resp.json()
+        # Do not log authStatus/authCheck — may contain sensitive auth details.
+        logger.debug(
+            "Provider status fetched: provider=%s, registered=%s, modelCount=%s",
+            provider,
+            status.get("registered"),
+            status.get("modelCount"),
+        )
+        return status
 
     async def create_session(
         self,
@@ -445,6 +511,7 @@ async def list_models(provider: str = "") -> list[dict]:
 async def check_sidecar_available() -> tuple[bool, str]:
     """Check if the sidecar service is available and ready."""
     logger.debug("Checking sidecar availability")
+    client: SidecarClient | None = None
     try:
         client = get_sidecar_client()
         data = await client.health()
@@ -461,16 +528,28 @@ async def check_sidecar_available() -> tuple[bool, str]:
         logger.warning("Sidecar unhealthy: url=%s, data=%s", client._base_url, data)
         return False, f"Sidecar unhealthy: {data}"
     except httpx.HTTPStatusError as e:
+        url = client._base_url if client is not None else _default_sidecar_url()
         if e.response.status_code == 503:
             try:
                 data = e.response.json()
+                logger.info(
+                    "Sidecar starting: url=%s, message=%s",
+                    url,
+                    data.get("message", "model discovery in progress"),
+                )
                 return False, f"Sidecar starting: {data.get('message', 'model discovery in progress')}"
             except ValueError:
-                pass
-        logger.warning("Sidecar unhealthy: url=%s, status=%d", client._base_url, e.response.status_code)
+                logger.debug(
+                    "Sidecar 503 response was not JSON: url=%s, body=%r",
+                    url,
+                    e.response.text,
+                    exc_info=True,
+                )
+        logger.warning("Sidecar unhealthy: url=%s, status=%d", url, e.response.status_code)
         return False, f"Sidecar unhealthy (HTTP {e.response.status_code})"
     except Exception as e:
-        logger.error("Sidecar unavailable: url=%s, error=%s", SIDECAR_URL, e)
+        url = client._base_url if client is not None else _default_sidecar_url()
+        logger.error("Sidecar unavailable: url=%s, error=%s", url, e, exc_info=True)
         return False, f"Sidecar unavailable: {e}"
 
 
@@ -493,3 +572,27 @@ async def run_parallel_with_limit(
     failures = sum(1 for r in results if isinstance(r, BaseException))
     logger.debug("Parallel tasks complete: total=%d, failures=%d", len(results), failures)
     return results
+
+
+class _PiSidecarClientModule(ModuleType):
+    """Module subclass so ``SIDECAR_URL`` reads/writes ``os.environ`` without shadowing."""
+
+    def __getattr__(self, name: str) -> object:
+        if name == "SIDECAR_URL":
+            return _default_sidecar_url()
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "SIDECAR_URL":
+            if value is None:
+                os.environ.pop("SIDECAR_URL", None)
+            else:
+                os.environ["SIDECAR_URL"] = _normalize_sidecar_url(str(value))
+            return
+        super().__setattr__(name, value)
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(super().__dir__()) | set(__all__) | {"SIDECAR_URL"})
+
+
+sys.modules[__name__].__class__ = _PiSidecarClientModule

@@ -194,7 +194,7 @@ curl -s -X POST http://127.0.0.1:9100/sessions \
 
 The `agent_dir` must be an absolute path pointing to an existing directory. When omitted, it defaults to `/tmp/pi-sidecar-agent`.
 
-> **Warning:** In `DEV_MODE=true`, `agent_dir` is silently ignored for security hardening — the sidecar prevents remote callers from steering resource loading.
+> **Warning:** In `DEV_MODE=true`, `agent_dir` must be a non-empty string (empty/whitespace → HTTP 400); a valid value is then discarded with an `AGENT_DIR_IGNORED` warning. On non-loopback binds without `DEV_MODE` (e.g. `SIDECAR_HOST`), including `agent_dir` returns HTTP 400.
 
 ---
 
@@ -528,7 +528,7 @@ This script is safe for CI: it waits for the sidecar, dynamically selects a mode
 | `POST` | `/sessions/:id/abort` | Abort an in-flight prompt |
 | `DELETE` | `/sessions/:id` | Delete a session and free resources |
 
-> **Tip:** The sidecar binds to `127.0.0.1:9100` by default. Set `SIDECAR_PORT` to change the port or `DEV_MODE=true` to bind to `0.0.0.0`. See [Configuration and Environment Variables](configuration-reference.html) for all options.
+> **Tip:** The sidecar binds to `127.0.0.1:9100` by default. Set `SIDECAR_PORT` to change the port, `SIDECAR_HOST` to override the bind address, or `DEV_MODE=true` for a `0.0.0.0` fallback when no host is set. See [Configuration and Environment Variables](configuration-reference.html) for all options.
 
 ## Related Pages
 

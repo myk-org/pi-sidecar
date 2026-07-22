@@ -199,14 +199,15 @@ Create a new AI session. Returns a session ID for subsequent prompts.
 | `model` | Must be a non-empty string | `"model is required and must be a non-empty string. Use GET /models to list available models."` |
 | `cwd` | If present, must be a string | `"cwd must be a string"` |
 | `agent_dir` | If present, must be a non-empty string | `"agent_dir must be a non-empty string"` |
-| `agent_dir` | Must be an absolute path | `"agent_dir must be an absolute path"` |
-| `agent_dir` | Must point to an existing directory | `"agent_dir does not exist"` / `"agent_dir must be a directory"` / `"agent_dir permission denied"` |
+| `agent_dir` | Must be an absolute path (loopback, non-`DEV_MODE`) | `"agent_dir must be an absolute path"` |
+| `agent_dir` | Must point to an existing directory (loopback, non-`DEV_MODE`) | `"agent_dir does not exist"` / `"agent_dir must be a directory"` / `"agent_dir permission denied"` |
+| `agent_dir` | Not allowed on non-loopback binds when `DEV_MODE` is unset | `"agent_dir is not allowed when the sidecar is bound to a non-loopback address"` |
 | `tools` | If present, must be an array of strings | `"tools must be an array of strings"` |
 | `custom_tools` | If present, must be an array | `"custom_tools must be an array"` |
 | `custom_tools[*]` | Each entry must be a plain object (not array, not null) with a non-empty string `name` | `"custom_tools entries must be plain objects with a string 'name' property"` |
 | — (model lookup) | Model must exist in registry, builtins, or ACPX models | `"Model '<model>' not found for provider '<provider>'. Use GET /models to list available models."` |
 
-> **Warning:** When `DEV_MODE=true`, the `agent_dir` parameter is type-checked but its value is discarded with a warning. This prevents remote callers from steering resource loading when the server binds to `0.0.0.0`. See [Configuration and Environment Variables](configuration-reference.html).
+> **Warning:** When `DEV_MODE=true`, `agent_dir` must be a non-empty string (empty/whitespace → HTTP 400); a valid value is then discarded with an `AGENT_DIR_IGNORED` warning (even on `0.0.0.0`). When bound to a non-loopback address without `DEV_MODE` (e.g. `SIDECAR_HOST`), including `agent_dir` returns HTTP 400. See [Configuration and Environment Variables](configuration-reference.html).
 
 **Response**
 

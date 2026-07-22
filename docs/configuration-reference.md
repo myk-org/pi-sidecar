@@ -42,14 +42,14 @@ SIDECAR_PORT=9200 node dist/server.js
 | **Default** | Not set (disabled) |
 | **Read by** | `startSidecar()` in `src/index.ts` |
 
-Controls two behaviors:
+Controls two behaviors (bind host precedence: `options.host` → `SIDECAR_HOST` → `DEV_MODE` fallback → localhost):
 
 | Behavior | `DEV_MODE` unset / not `"true"` | `DEV_MODE=true` |
 |----------|-------------------------------|-----------------|
-| **Bind address** | `127.0.0.1` (localhost only) | `0.0.0.0` (all interfaces) |
-| **`agent_dir` handling** | Validated (must be absolute path to existing directory) and passed to the Pi SDK | Type-checked but value is **discarded** with a warning — prevents remote callers from steering resource loading |
+| **Bind address** | Fallback `127.0.0.1` when `options.host` and `SIDECAR_HOST` are unset | Fallback `0.0.0.0` when `options.host` and `SIDECAR_HOST` are unset; explicit host overrides still win |
+| **`agent_dir` handling** | On loopback: validated (absolute existing directory) and passed to the Pi SDK. On non-loopback (e.g. `SIDECAR_HOST`): requests that include `agent_dir` get HTTP 400 | Must be a non-empty string (empty/whitespace → HTTP 400); otherwise value is **discarded** with an `AGENT_DIR_IGNORED` warning — prevents remote callers from steering resource loading |
 
-> **Warning:** Setting `DEV_MODE=true` exposes the sidecar on all network interfaces. The sidecar has **no authentication**. Only use this in trusted development environments.
+> **Warning:** When `DEV_MODE=true` and no host override is set, the sidecar binds `0.0.0.0` (all interfaces). `options.host` / `SIDECAR_HOST` take precedence over that fallback. The sidecar has **no authentication**. Only use non-loopback binds in trusted development environments.
 
 ```bash
 DEV_MODE=true SIDECAR_PORT=9100 node dist/server.js
@@ -296,7 +296,8 @@ All environment variables in one place:
 | Variable | Component | Default | Purpose |
 |----------|-----------|---------|---------|
 | `SIDECAR_PORT` | Server | `9100` | HTTP listen port |
-| `DEV_MODE` | Server | unset | Bind `0.0.0.0`, disable `agent_dir` enforcement |
+| `SIDECAR_HOST` | Server | unset (`DEV_MODE? 0.0.0.0 : 127.0.0.1`) | Bind override; precedence `options.host` → `SIDECAR_HOST` → `DEV_MODE` → localhost; non-loopback rejects `agent_dir` with HTTP 400 (unless `DEV_MODE`) |
+| `DEV_MODE` | Server | unset | When `SIDECAR_HOST`/`options.host` unset: bind `0.0.0.0`. Non-empty `agent_dir` is discarded (any host); empty/whitespace still HTTP 400 |
 | `PI_SIDECAR_LOG_LEVEL` | Server + Client | `info` | Log verbosity (`debug` / `info` / `warn` / `error`) |
 | `ACPX_AGENTS` | Server | `""` | Comma-separated ACPX agents for model discovery |
 | `SIDECAR_WATCHDOG_URL` | Server | unset | Companion backend health URL (enables watchdog) |

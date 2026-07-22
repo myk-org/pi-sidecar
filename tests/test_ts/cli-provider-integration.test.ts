@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { accessSync } from "node:fs";
-import { dirname, join } from "node:path";
 
 import { createJiti } from "jiti";
 
@@ -22,16 +21,6 @@ describe("cli-provider extension integration", () => {
     assert.doesNotThrow(() => accessSync(extPath), `extension file should exist at: ${extPath}`);
   });
 
-  it("resolves discover.ts alongside the extension entry", () => {
-    const extPath = resolveExtensionPath(
-      "UNUSED_ENV_" + Date.now(),
-      "pi-orchestrator-config",
-      "extensions/cli-provider/index.ts",
-    );
-    const discoverPath = join(dirname(extPath), "discover.ts");
-    assert.doesNotThrow(() => accessSync(discoverPath), `discover.ts should exist at: ${discoverPath}`);
-  });
-
   it("respects SIDECAR_CLI_PROVIDER_EXTENSION_PATH-style env override", () => {
     const envVar = "TEST_CLI_PROVIDER_EXT_PATH_" + Date.now();
     try {
@@ -43,29 +32,22 @@ describe("cli-provider extension integration", () => {
     }
   });
 
-  it("loads discoverCliModels via jiti and returns cli-* provider shape", async () => {
-    const discoverPath = resolveExtensionPath(
+  it("exports discoverCliModels from the cli-provider entrypoint (no live CLI discovery in unit tests)", () => {
+    const extPath = resolveExtensionPath(
       "UNUSED_ENV_" + Date.now(),
       "pi-orchestrator-config",
-      "extensions/cli-provider/discover.ts",
+      "extensions/cli-provider/index.ts",
     );
-    assert.ok(discoverPath.length > 0, "discover.ts should resolve");
+    assert.ok(extPath.length > 0, "extension entry should resolve");
 
+    // Load via the public entry (same path SessionStore uses) — do NOT call
+    // discoverCliModels() here (that would spawn/query real CLI agents).
     const jiti = createJiti(import.meta.url);
-    const mod = jiti(discoverPath) as {
+    const mod = jiti(extPath) as {
       discoverCliModels?: (agent: string) => Promise<Array<{ id: string; name: string; provider: string }>>;
       default?: { discoverCliModels: (agent: string) => Promise<Array<{ id: string; name: string; provider: string }>> };
     };
     const discoverCliModels = mod.discoverCliModels ?? mod.default?.discoverCliModels;
-    assert.equal(typeof discoverCliModels, "function", "discoverCliModels should be exported");
-
-    // Use an agent name that may or may not have a binary — API must not throw.
-    const models = await discoverCliModels!("cursor");
-    assert.ok(Array.isArray(models), "should return an array");
-    for (const m of models) {
-      assert.ok(m.id.startsWith("cursor:"), `id should be namespaced, got: ${m.id}`);
-      assert.equal(m.provider, "cli-cursor", `provider should be cli-cursor, got: ${m.provider}`);
-      assert.ok(typeof m.name === "string" && m.name.length > 0, "name should be non-empty");
-    }
+    assert.equal(typeof discoverCliModels, "function", "discoverCliModels should be exported from index.ts");
   });
 });
