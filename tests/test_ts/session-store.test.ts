@@ -242,4 +242,33 @@ describe("SessionStore (mocked runtime)", () => {
       assert.equal(store.count(), 0);
     });
   });
+
+  it("disposeAll() awaits in-flight runtimeInit and disposes a runtime assigned mid-shutdown", async () => {
+    const store = new SessionStore() as any;
+    let runtimeDisposed = false;
+    const fakeRuntime = {
+      dispose: async () => {
+        runtimeDisposed = true;
+      },
+    };
+
+    let resolveInit!: () => void;
+    store.runtimeInit = new Promise<void>((resolve) => {
+      resolveInit = () => {
+        store.internalRuntime = fakeRuntime;
+        resolve();
+      };
+    });
+
+    const disposePromise = store.disposeAll();
+    assert.equal(store.disposed, true);
+    assert.equal(store.internalRuntime, undefined, "runtime must not exist yet mid-init");
+
+    resolveInit();
+    await disposePromise;
+
+    assert.equal(runtimeDisposed, true, "runtime assigned during awaited init must be disposed");
+    assert.equal(store.internalRuntime, undefined);
+    assert.equal(store.runtimeInit, undefined);
+  });
 });

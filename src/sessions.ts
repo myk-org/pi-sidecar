@@ -388,11 +388,24 @@ export class SessionStore {
         const sessionManager = SessionManager.inMemory();
         const createRuntime = createInternalRuntimeFactory(extensionPaths);
 
-        this.internalRuntime = await createAgentSessionRuntime(createRuntime, {
+        const runtime = await createAgentSessionRuntime(createRuntime, {
           cwd: "/tmp",
           agentDir: INTERNAL_AGENT_DIR,
           sessionManager,
         });
+        // disposeAll() may have run while we were creating — never leave an
+        // orphaned registrar runtime alive past shutdown (its dispose() is the
+        // only path that emits session_shutdown for acpx/cli extensions).
+        if (this._disposed) {
+          try {
+            await runtime.dispose();
+            logger.warn(`[sidecar] INTERNAL_RUNTIME_ORPHAN_DISPOSED: created during shutdown`);
+          } catch (err) {
+            logger.warn(`[sidecar] INTERNAL_RUNTIME_ORPHAN_DISPOSE_FAILED:`, err);
+          }
+          return;
+        }
+        this.internalRuntime = runtime;
         this.modelRuntime = this.internalRuntime.services.modelRuntime;
         this.modelRegistry = new ModelRegistry(this.modelRuntime);
         for (const diagnostic of this.internalRuntime.diagnostics) {
@@ -403,6 +416,8 @@ export class SessionStore {
       })();
     }
     await this.runtimeInit;
+    // Init may have aborted because disposeAll() ran mid-create.
+    this.assertNotDisposed("ensureInternalRuntime");
   }
 
   /**
@@ -1008,6 +1023,19 @@ export class SessionStore {
    */
   async disposeAll(): Promise<void> {
     this._disposed = true;
+
+    // Await in-flight ensureInternalRuntime() so a runtime that finishes after
+    // `_disposed` is set is still assigned (or orphan-disposed) before we tear
+    // down — otherwise we could return while createAgentSessionRuntime is still
+    // running and leak the registrar forever.
+    if (this.runtimeInit) {
+      try {
+        await this.runtimeInit;
+      } catch (err) {
+        logger.warn(`[sidecar] RUNTIME_INIT_AWAIT_ON_DISPOSE_FAILED:`, err);
+      }
+    }
+
     let count = 0;
     for (const [id, entry] of this.sessions) {
       logger.log(`[sidecar] Disposing session: ${id}`);

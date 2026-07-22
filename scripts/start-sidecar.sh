@@ -124,10 +124,27 @@ start_background() {
     ensure_log_dir
     nohup env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
         npx tsx src/server.ts >> "${LOG_FILE}" 2>&1 &
-    disown
     local pid=$!
+    disown "${pid}" 2>/dev/null || disown || true
+
+    # If health never becomes OK, die() would leave this nohup process orphaned.
+    # Kill it on any non-zero exit during the startup wait, then clear the trap.
+    cleanup_startup() {
+        local ec=$?
+        if [[ "${ec}" -ne 0 ]] && kill -0 "${pid}" 2>/dev/null; then
+            echo "Startup failed (exit=${ec}); killing sidecar PID ${pid}…" >&2
+            echo "──── last 40 log lines ────" >&2
+            tail -n 40 "${LOG_FILE}" 2>/dev/null >&2 || true
+            echo "───────────────────────────" >&2
+            kill "${pid}" 2>/dev/null || true
+            sleep 1
+            kill -9 "${pid}" 2>/dev/null || true
+        fi
+    }
+    trap cleanup_startup EXIT
 
     wait_for_health
+    trap - EXIT
 
     echo "──────────────────────────────────────"
     echo "pi-sidecar running"
