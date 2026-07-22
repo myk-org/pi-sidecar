@@ -172,11 +172,11 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
 
   async function shutdownSidecar(reason: string): Promise<void> {
     if (shutdownPromise) {
-      logger.info(`[sidecar] Shutting down: reason=${reason}, action=join_in_progress`);
+      logger.info(`[sidecar] SHUTDOWN_JOIN: reason=${reason}, action=join_in_progress`);
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
-      logger.info(`[sidecar] Shutting down: reason=${reason}`);
+      logger.info(`[sidecar] SHUTDOWN_START: reason=${reason}`);
       draining = true;
       stopWatchdog?.();
       if (cleanupInterval !== undefined) clearInterval(cleanupInterval);
@@ -197,7 +197,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       await closed;
       await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
       await store.disposeAll();
-      logger.info("[sidecar] Shut down");
+      logger.info(`[sidecar] SHUTDOWN_COMPLETE: reason=${reason}`);
     })();
     return shutdownPromise;
   }

@@ -489,8 +489,22 @@ export class SessionStore {
         if (fromRuntime.length > 0) {
           return { models: fromRuntime, source: "modelRuntime" as const };
         }
+        // Only advertise fallback discoveries that ModelRuntime can actually
+        // resolve — create() later calls getModel() and would 500 otherwise.
         const fromFallback = await fallback(agent);
-        return { models: fromFallback, source: "fallback" as const };
+        if (!provider) {
+          logger.warn(
+            `[sidecar] ${label}_FALLBACK_DROPPED: agent=${agent}, provider=${providerId}, reason=provider_not_registered, discovered=${fromFallback.length}`,
+          );
+          return { models: [], source: "fallback" as const };
+        }
+        const resolvable = fromFallback.filter((m) => Boolean(this.modelRuntime?.getModel(providerId, m.id)));
+        if (resolvable.length < fromFallback.length) {
+          logger.warn(
+            `[sidecar] ${label}_FALLBACK_FILTERED: agent=${agent}, provider=${providerId}, discovered=${fromFallback.length}, resolvable=${resolvable.length}`,
+          );
+        }
+        return { models: resolvable, source: "fallback" as const };
       }),
     );
 
@@ -1043,23 +1057,23 @@ export class SessionStore {
       try {
         await this.runtimeInit;
       } catch (err) {
-        logger.warn(`[sidecar] RUNTIME_INIT_AWAIT_ON_DISPOSE_FAILED:`, err);
+        logger.warn(`[sidecar] RUNTIME_INIT_AWAIT_ON_DISPOSE_FAILED: reason=await_error`, err);
       }
     }
 
     let count = 0;
     for (const [id, entry] of this.sessions) {
-      logger.log(`[sidecar] Disposing session: ${id}`);
+      logger.log(`[sidecar] SESSION_DISPOSE: session=${id}`);
       entry.session.dispose();
       count++;
     }
     this.sessions.clear();
-    logger.info(`[sidecar] All user sessions disposed (${count} total)`);
+    logger.info(`[sidecar] SESSIONS_DISPOSED: count=${count}`);
 
     if (this.internalRuntime) {
       await this.internalRuntime.dispose();
       this.internalRuntime = undefined;
-      logger.info(`[sidecar] Internal runtime disposed`);
+      logger.info(`[sidecar] INTERNAL_RUNTIME_DISPOSED: ok=true`);
     }
     this.modelRuntime = undefined;
     this.modelRegistry = undefined;

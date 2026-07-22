@@ -29,8 +29,10 @@ describe("compareVersions", () => {
     assert.ok(compareVersions("1.0.0", "0.81.1") > 0);
   });
 
-  it("ignores prerelease/build suffixes on the leading x.y.z", () => {
-    assert.ok(compareVersions("0.81.1-beta.1", "0.81.0") > 0);
+  it("treats prerelease/build suffixes as unparsable (fail-closed for floor)", () => {
+    // Strict x.y.z only — prereleases must not satisfy MIN_PI_VERSION via compare.
+    assert.equal(compareVersions("0.81.1-beta.1", "0.81.0"), 0);
+    assert.equal(compareVersions("0.81.1+build.1", "0.81.1"), 0);
   });
 
   it("treats unparsable versions as equal (does not throw)", () => {

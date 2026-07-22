@@ -10,8 +10,14 @@ export const MIN_PI_VERSION = "0.81.1";
 /** Not a real override — resolveExtensionPathDetailed() requires an env var name; this one is never set. */
 const UNUSED_ENV_VAR = "__SIDECAR_PI_VERSION_PACKAGE_JSON_INTERNAL__";
 
+/**
+ * Parses a strict stable semver `x.y.z` (no prerelease/build suffix).
+ * Prereleases like `0.81.1-beta.1` return null so the floor check fail-closes —
+ * semver treats prereleases as lower than the associated release, and we do not
+ * want them to satisfy MIN_PI_VERSION.
+ */
 function parseVersion(v: string): [number, number, number] | null {
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim());
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v.trim());
   if (!m) return null;
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
@@ -65,7 +71,7 @@ function getPathPiVersion(): string | null {
       return m ? m[1] : null;
     }
   } catch (err) {
-    logger.debug(`[sidecar] PI_PATH_VERSION_CHECK_FAILED:`, err);
+    logger.debug(`[sidecar] PI_PATH_VERSION_CHECK_FAILED: reason=spawn_error`, err);
   }
   return null;
 }
@@ -80,25 +86,26 @@ function getPathPiVersion(): string | null {
 export function assertPiVersionFloor(): void {
   const installed = getInstalledPiVersion();
   if (!installed) {
-    logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: reason=could_not_resolve_installed_version, required>=${MIN_PI_VERSION}`);
+    logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: reason=could_not_resolve_installed_version, min_version=${MIN_PI_VERSION}`);
     throw new Error(`Could not resolve installed @earendil-works/pi-coding-agent version; requires >=${MIN_PI_VERSION}`);
   }
   // Fail closed: compareVersions treats unparsable inputs as equal (0), which
-  // would incorrectly pass the floor check — reject unparsable versions here.
+  // would incorrectly pass the floor check — reject unparsable / prerelease
+  // versions here (parseVersion requires exact x.y.z).
   if (!parseVersion(installed)) {
-    logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: reason=unparsable_installed_version, installed=${installed}, required>=${MIN_PI_VERSION}`);
+    logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: reason=unparsable_installed_version, installed=${installed}, min_version=${MIN_PI_VERSION}`);
     throw new Error(
       `Could not parse installed @earendil-works/pi-coding-agent version '${installed}'; requires >=${MIN_PI_VERSION}`,
     );
   }
   if (compareVersions(installed, MIN_PI_VERSION) < 0) {
-    logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: installed=${installed}, required>=${MIN_PI_VERSION}`);
+    logger.error(`[sidecar] PI_VERSION_CHECK_FAILED: installed=${installed}, min_version=${MIN_PI_VERSION}`);
     throw new Error(`@earendil-works/pi-coding-agent ${installed} is below the required floor ${MIN_PI_VERSION}. Upgrade the dependency.`);
   }
-  logger.info(`[sidecar] PI_VERSION_CHECK_OK: installed=${installed}, required>=${MIN_PI_VERSION}`);
+  logger.info(`[sidecar] PI_VERSION_CHECK_OK: installed=${installed}, min_version=${MIN_PI_VERSION}`);
 
   const pathVersion = getPathPiVersion();
   if (pathVersion && compareVersions(pathVersion, MIN_PI_VERSION) < 0) {
-    logger.warn(`[sidecar] PI_PATH_VERSION_BELOW_FLOOR: pathVersion=${pathVersion}, required>=${MIN_PI_VERSION}, reason=subagent_subprocess_may_fail`);
+    logger.warn(`[sidecar] PI_PATH_VERSION_BELOW_FLOOR: path_version=${pathVersion}, min_version=${MIN_PI_VERSION}, reason=subagent_subprocess_may_fail`);
   }
 }

@@ -9,7 +9,10 @@ import { SessionStore } from "../../src/sessions.js";
  * to read models off the shared ModelRuntime's live provider catalog (the
  * "modelRuntime" branch) or fall back to a jiti-loaded discovery call (the
  * "fallback" branch, used when the provider isn't registered yet or is
- * registered but empty).
+ * registered but empty). Fallback results are filtered to models that
+ * `ModelRuntime.getModel()` can resolve — and dropped entirely when the
+ * provider itself is unregistered — so GET /models never advertises models
+ * that POST /sessions cannot create.
  *
  * `modelRuntime` and `snapshotAgentSource` are private; this file reaches
  * past that via `as any` with a duck-typed `{ getProvider }` stand-in —
@@ -35,10 +38,11 @@ describe("SessionStore.snapshotAgentSource", () => {
     assert.deepEqual(result, runtimeModels);
   });
 
-  it("falls back to discovery when the provider isn't registered on ModelRuntime (fallback branch)", async () => {
+  it("drops fallback discoveries when the provider isn't registered on ModelRuntime", async () => {
     const store = new SessionStore() as any;
     store.modelRuntime = {
       getProvider: () => undefined,
+      getModel: () => undefined,
     };
 
     const fallbackModels = [{ id: "cursor:composer-2.5", name: "Composer", provider: "cli-cursor" }];
@@ -51,26 +55,30 @@ describe("SessionStore.snapshotAgentSource", () => {
     const result = await store.snapshotAgentSource(["cursor"], "cli", fallback);
 
     assert.equal(fallbackCalledWith, "cursor");
-    assert.deepEqual(result, fallbackModels);
+    // Advertising models that create() cannot resolve via getModel() is a bug —
+    // unregistered providers must yield an empty cache entry.
+    assert.deepEqual(result, []);
   });
 
-  it("falls back to discovery when the provider is registered but reports zero models (fallback branch)", async () => {
+  it("keeps only fallback models that ModelRuntime.getModel can resolve when the provider catalog is empty", async () => {
     const store = new SessionStore() as any;
+    const resolvable = { id: "cursor:default[]", name: "Default", provider: "acpx-cursor" };
+    const unresolvable = { id: "cursor:ghost[]", name: "Ghost", provider: "acpx-cursor" };
     store.modelRuntime = {
       getProvider: (id: string) => (id === "acpx-cursor" ? { getModels: () => [] } : undefined),
+      getModel: (_provider: string, modelId: string) => (modelId === resolvable.id ? resolvable : undefined),
     };
 
-    const fallbackModels = [{ id: "cursor:default[]", name: "Default", provider: "acpx-cursor" }];
     let fallbackCalled = false;
     const fallback = async () => {
       fallbackCalled = true;
-      return fallbackModels;
+      return [resolvable, unresolvable];
     };
 
     const result = await store.snapshotAgentSource(["cursor"], "acpx", fallback);
 
     assert.equal(fallbackCalled, true, "an empty (but registered) provider catalog must still trigger the fallback");
-    assert.deepEqual(result, fallbackModels);
+    assert.deepEqual(result, [resolvable]);
   });
 
   it("returns an empty array without touching modelRuntime/fallback when no agents are configured", async () => {
@@ -89,10 +97,14 @@ describe("SessionStore.snapshotAgentSource", () => {
   });
 
   it("isolates per-agent failures: one agent's rejection does not affect another agent's result", async () => {
-    const store = new SessionStore() as any;
-    store.modelRuntime = { getProvider: () => undefined };
-
     const goodModels = [{ id: "cursor:default[]", name: "Default", provider: "acpx-cursor" }];
+    const store = new SessionStore() as any;
+    store.modelRuntime = {
+      getProvider: (id: string) => (id.startsWith("acpx-") ? { getModels: () => [] } : undefined),
+      getModel: (_provider: string, modelId: string) =>
+        modelId === goodModels[0].id ? goodModels[0] : undefined,
+    };
+
     const fallback = async (agent: string) => {
       if (agent === "broken") throw new Error("discovery exploded");
       return goodModels;
