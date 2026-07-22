@@ -409,30 +409,33 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             return;
           }
           // Non-loopback binds (SIDECAR_HOST / DEV_MODE / startSidecar({ host })):
-          // type-check only, then discard — remote callers must not steer resource loading.
+          // reject agent_dir — remote callers must not steer resource loading.
           if (!isLoopbackBindHost(trustBindHost)) {
             logger.warn(
-              `[sidecar] POST /sessions: agent_dir ignored on non-loopback bind host=${trustBindHost} (security hardening)`,
+              `[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=not_allowed_on_non_loopback_bind, host=${trustBindHost}`,
             );
-          } else {
-            if (!isAbsolute(agent_dir)) {
-              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be absolute path`);
-              sendJson(res, 400, { error: "agent_dir must be an absolute path" });
+            sendJson(res, 400, {
+              error: "agent_dir is not allowed when the sidecar is bound to a non-loopback address",
+            });
+            return;
+          }
+          if (!isAbsolute(agent_dir)) {
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be absolute path`);
+            sendJson(res, 400, { error: "agent_dir must be an absolute path" });
+            return;
+          }
+          try {
+            const stat = statSync(agent_dir);
+            if (!stat.isDirectory()) {
+              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=not a directory`);
+              sendJson(res, 400, { error: "agent_dir must be a directory" });
               return;
             }
-            try {
-              const stat = statSync(agent_dir);
-              if (!stat.isDirectory()) {
-                logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=not a directory`);
-                sendJson(res, 400, { error: "agent_dir must be a directory" });
-                return;
-              }
-            } catch (err: any) {
-              const reason = err?.code === "ENOENT" ? "does not exist" : err?.code === "EACCES" ? "permission denied" : `not accessible (${err?.code || "unknown"})`;
-              logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=${reason}`);
-              sendJson(res, 400, { error: `agent_dir ${reason}` });
-              return;
-            }
+          } catch (err: any) {
+            const reason = err?.code === "ENOENT" ? "does not exist" : err?.code === "EACCES" ? "permission denied" : `not accessible (${err?.code || "unknown"})`;
+            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=${reason}`);
+            sendJson(res, 400, { error: `agent_dir ${reason}` });
+            return;
           }
         }
         if (tools !== undefined) {
@@ -472,13 +475,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             return;
           }
         }
-        const effectiveAgentDir = isLoopbackBindHost(trustBindHost) ? agent_dir : undefined;
         const sessionId = await store.create({
           provider,
           model,
           systemPrompt: system_prompt,
           cwd: cwd || process.cwd(),
-          agentDir: effectiveAgentDir,
+          agentDir: agent_dir,
           tools,
           customTools: custom_tools,
         });
