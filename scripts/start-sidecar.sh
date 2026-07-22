@@ -94,35 +94,121 @@ clear_pid_file() {
 }
 
 wait_for_health() {
-    local elapsed=0
     # Bound each probe so a hung TCP/connect cannot stall past HEALTH_TIMEOUT.
     local curl_connect_timeout=2
     local curl_max_time=5
+    local start=$SECONDS
+    local remaining max_time
     echo "Waiting for sidecar health check (up to ${HEALTH_TIMEOUT}s)…"
-    while (( elapsed < HEALTH_TIMEOUT )); do
-        if curl -sf --connect-timeout "${curl_connect_timeout}" --max-time "${curl_max_time}" \
+    while (( SECONDS - start < HEALTH_TIMEOUT )); do
+        remaining=$(( HEALTH_TIMEOUT - (SECONDS - start) ))
+        if (( remaining < 1 )); then
+            break
+        fi
+        # Cap probe so we never overshoot the wall-clock budget by a full curl_max_time.
+        max_time="${curl_max_time}"
+        if (( remaining < curl_max_time )); then
+            max_time="${remaining}"
+        fi
+        if curl -sf --connect-timeout "${curl_connect_timeout}" --max-time "${max_time}" \
             "${HEALTH_URL}" >/dev/null 2>&1; then
-            echo "Health check passed after ${elapsed}s."
+            echo "Health check passed after $(( SECONDS - start ))s."
             return 0
         fi
+        # Only sleep if we still have budget remaining after the probe.
+        if (( SECONDS - start >= HEALTH_TIMEOUT )); then
+            break
+        fi
         sleep 1
-        (( elapsed++ )) || true
     done
     die "Sidecar did not become healthy within ${HEALTH_TIMEOUT}s. Check ${LOG_FILE}"
+}
+
+# True when /health looks like this sidecar (200 ready or 503 starting).
+health_looks_like_sidecar() {
+    local code
+    code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 \
+        "${HEALTH_URL}" 2>/dev/null || echo "000")"
+    [[ "${code}" == "200" || "${code}" == "503" ]]
+}
+
+# True when /proc/$pid/cmdline looks like our sidecar entrypoint (Linux).
+pid_cmdline_looks_like_sidecar() {
+    local pid="$1"
+    local cmdline=""
+    if [[ -r "/proc/${pid}/cmdline" ]]; then
+        cmdline="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+    fi
+    [[ "${cmdline}" == *dist/server.js* || "${cmdline}" == *src/server.ts* ]]
+}
+
+# Confirm pid is safe to signal: numeric, matches port listener when known,
+# and (when checkable) cmdline and/or /health look like the sidecar.
+confirm_sidecar_pid() {
+    local pid="$1"
+    local port_pid
+
+    if [[ ! "${pid}" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+    if ! kill -0 "${pid}" 2>/dev/null; then
+        return 1
+    fi
+
+    port_pid="$(pid_on_port | tr -d '[:space:]')"
+    if [[ -n "${port_pid}" && "${port_pid}" != "${pid}" ]]; then
+        return 1
+    fi
+
+    # Prefer positive identity when we can read cmdline; otherwise require
+    # matching port listener OR sidecar-shaped /health.
+    if [[ -r "/proc/${pid}/cmdline" ]]; then
+        if ! pid_cmdline_looks_like_sidecar "${pid}"; then
+            return 1
+        fi
+        return 0
+    fi
+
+    if [[ -n "${port_pid}" && "${port_pid}" == "${pid}" ]] && health_looks_like_sidecar; then
+        return 0
+    fi
+    if [[ -n "${port_pid}" && "${port_pid}" == "${pid}" ]]; then
+        # Same PID owns the port; accept even if health probe is briefly down during stop.
+        return 0
+    fi
+    return 1
 }
 
 # ── Commands ─────────────────────────────────────────────
 
 stop_sidecar() {
-    local pid
-    pid="$(read_pid_file)"
-    if [[ -z "${pid}" ]]; then
-        pid="$(pid_on_port | tr -d '[:space:]')"
+    local pid=""
+    local candidate
+    local port_pid
+
+    candidate="$(read_pid_file)"
+    if [[ -n "${candidate}" && "${candidate}" =~ ^[0-9]+$ ]]; then
+        pid="${candidate}"
+    elif [[ -n "${candidate}" ]]; then
+        echo "WARNING: PID file contains non-numeric value (${candidate}); clearing." >&2
+        clear_pid_file
     fi
+
+    port_pid="$(pid_on_port | tr -d '[:space:]')"
+
+    # Prefer the live port listener when it disagrees with a stale PID file.
+    if [[ -n "${port_pid}" ]]; then
+        if [[ -z "${pid}" || "${pid}" != "${port_pid}" ]]; then
+            if [[ -n "${pid}" && "${pid}" != "${port_pid}" ]]; then
+                echo "WARNING: PID file (${pid}) does not match listener on port ${PORT} (${port_pid}); using port PID." >&2
+                clear_pid_file
+            fi
+            pid="${port_pid}"
+        fi
+    fi
+
     if [[ -z "${pid}" ]]; then
-        # Port may still answer if a process outside this PID namespace holds it
-        # (e.g. host-network orphan). Surface that so callers don't assume down.
-        if curl -sf --connect-timeout 1 --max-time 2 "${HEALTH_URL}" >/dev/null 2>&1; then
+        if health_looks_like_sidecar; then
             echo "WARNING: ${HEALTH_URL} still responds but no PID is visible in this namespace." >&2
             echo "Kill the orphan on the host, e.g.: fuser -k ${PORT}/tcp" >&2
             clear_pid_file
@@ -132,21 +218,13 @@ stop_sidecar() {
         clear_pid_file
         return 0
     fi
-    if ! kill -0 "${pid}" 2>/dev/null; then
-        echo "Stale PID file (${pid}); clearing."
+
+    if ! confirm_sidecar_pid "${pid}"; then
+        echo "WARNING: refusing to kill PID ${pid} — could not verify it is the sidecar on port ${PORT}." >&2
         clear_pid_file
-        # Fall through to port-based stop once more
-        pid="$(pid_on_port | tr -d '[:space:]')"
-        if [[ -z "${pid}" ]]; then
-            if curl -sf --connect-timeout 1 --max-time 2 "${HEALTH_URL}" >/dev/null 2>&1; then
-                echo "WARNING: ${HEALTH_URL} still responds but no PID is visible in this namespace." >&2
-                echo "Kill the orphan on the host, e.g.: fuser -k ${PORT}/tcp" >&2
-                return 1
-            fi
-            echo "No sidecar running on port ${PORT}."
-            return 0
-        fi
+        return 1
     fi
+
     echo "Stopping sidecar (PID ${pid}) on port ${PORT}…"
     kill "${pid}" 2>/dev/null || true
     # Wait up to 5 seconds for a clean exit.
