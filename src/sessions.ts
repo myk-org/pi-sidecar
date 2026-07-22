@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
-import { dirname, join } from "node:path";
-
 import {
   type AgentSession,
   type AgentSessionRuntime,
@@ -59,11 +57,12 @@ type AcpxDiscoverModule = {
 
 const ACPX_EXTENSION = resolveAndLog("SIDECAR_ACPX_EXTENSION_PATH", "pi-orchestrator-config", "extensions/acpx-provider/index.ts");
 const CLI_PROVIDER_EXTENSION = resolveAndLog("SIDECAR_CLI_PROVIDER_EXTENSION_PATH", "pi-orchestrator-config", "extensions/cli-provider/index.ts");
-/** discover.ts lives next to the cli-provider entry (same override dir when SIDECAR_CLI_PROVIDER_EXTENSION_PATH is set). */
-const CLI_DISCOVER_MODULE = CLI_PROVIDER_EXTENSION
-  ? join(dirname(CLI_PROVIDER_EXTENSION), "discover.ts")
-  : "";
-/** acpx-provider exports discoverAcpxModels directly from its entry file — no separate discover.ts. */
+/**
+ * Load fallback discovery via jiti from each extension's public entry
+ * (`index.ts`), which re-exports discoverCliModels / discoverAcpxModels —
+ * never from a private sibling like discover.ts.
+ */
+const CLI_DISCOVER_MODULE = CLI_PROVIDER_EXTENSION;
 const ACPX_DISCOVER_MODULE = ACPX_EXTENSION;
 const VERTEX_EXTENSION = resolveAndLog("SIDECAR_VERTEX_EXTENSION_PATH", "pi-vertex-claude", "index.ts");
 const SUBAGENT_EXTENSION = resolveAndLog("SIDECAR_SUBAGENT_EXTENSION_PATH", "@earendil-works/pi-coding-agent", "examples/extensions/subagent/index.ts");

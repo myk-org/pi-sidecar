@@ -216,7 +216,7 @@ Parallel to ACPX: set `CLI_AGENTS` (e.g. `cursor` or `claude,gemini,cursor`) to 
 
 `GET /models` returns three groups (builtins after ACPX base-ID placeholder dedup, then acpx, then cli). No acpx↔cli merge. `cli-*` model ids are CLI `--model` values; `acpx-*` ids use bracket notation — never cross-feed. Listing awaits ModelRuntime init so builtins are not empty during startup races.
 
-Override the extension path with `SIDECAR_CLI_PROVIDER_EXTENSION_PATH` (discover.ts is resolved as a sibling of that entry).
+Override the extension path with `SIDECAR_CLI_PROVIDER_EXTENSION_PATH`. Fallback discovery loads `discoverCliModels` via jiti from that same entry (not a private sibling module).
 
 ### 6. Resource loading via `cwd` and `agent_dir`
 
