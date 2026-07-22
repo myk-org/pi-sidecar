@@ -528,7 +528,7 @@ This script is safe for CI: it waits for the sidecar, dynamically selects a mode
 | `POST` | `/sessions/:id/abort` | Abort an in-flight prompt |
 | `DELETE` | `/sessions/:id` | Delete a session and free resources |
 
-> **Tip:** The sidecar binds to `127.0.0.1:9100` by default. Set `SIDECAR_PORT` to change the port or `DEV_MODE=true` to bind to `0.0.0.0`. See [Configuration and Environment Variables](configuration-reference.html) for all options.
+> **Tip:** The sidecar binds to `127.0.0.1:9100` by default. Set `SIDECAR_PORT` to change the port, `SIDECAR_HOST` to override the bind address, or `DEV_MODE=true` for a `0.0.0.0` fallback when no host is set. See [Configuration and Environment Variables](configuration-reference.html) for all options.
 
 ## Related Pages
 
