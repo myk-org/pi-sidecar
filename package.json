@@ -29,7 +29,8 @@
     "build": "tsc",
     "postbuild": "rm -f dist/.gitignore",
     "prepublishOnly": "npm run build",
-    "test": "node --import tsx --test tests/test_ts/*.test.ts"
+    "test": "node --import tsx --test tests/test_ts/*.test.ts",
+    "postinstall": "node scripts/enforce-protobufjs-floor.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.81.1",
@@ -37,7 +38,8 @@
     "acpx": "^0.8.0",
     "jiti": "^2.7.0",
     "pi-orchestrator-config": "github:myk-org/pi-config#v3.16.0",
-    "pi-vertex-claude": "myk-org/pi-vertex-claude#v0.2.2"
+    "pi-vertex-claude": "myk-org/pi-vertex-claude#v0.2.2",
+    "protobufjs": "7.6.5"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=0.81.1",

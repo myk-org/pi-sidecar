@@ -57,7 +57,9 @@ pid_on_port() {
     if command -v lsof >/dev/null 2>&1; then
         lsof -ti "tcp:${PORT}" -s "tcp:listen" 2>/dev/null | head -1 || true
     elif command -v fuser >/dev/null 2>&1; then
-        fuser "${PORT}/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -v '^$' | head -1 || true
+        # fuser often prints a "PORT/tcp:" label before PIDs — take the first
+        # numeric token only so --stop never tries to kill a non-PID string.
+        fuser "${PORT}/tcp" 2>/dev/null | grep -Eo '[0-9]+' | head -1 || true
     else
         echo ""
     fi
