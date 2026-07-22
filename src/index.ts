@@ -408,10 +408,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             sendJson(res, 400, { error: "agent_dir must be a non-empty string" });
             return;
           }
-          // In DEV_MODE (0.0.0.0), ignore agent_dir from requests to prevent
-          // remote callers from steering resource loading (security hardening).
-          if (process.env.DEV_MODE === "true") {
-            logger.warn(`[sidecar] POST /sessions: agent_dir ignored in DEV_MODE (security hardening)`);
+          // Non-loopback binds (SIDECAR_HOST / DEV_MODE / startSidecar({ host })):
+          // type-check only, then discard — remote callers must not steer resource loading.
+          if (!isLoopbackBindHost(trustBindHost)) {
+            logger.warn(
+              `[sidecar] POST /sessions: agent_dir ignored on non-loopback bind host=${trustBindHost} (security hardening)`,
+            );
           } else {
             if (!isAbsolute(agent_dir)) {
               logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=agent_dir, reason=must be absolute path`);
@@ -470,7 +472,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             return;
           }
         }
-        const effectiveAgentDir = process.env.DEV_MODE === "true" ? undefined : agent_dir;
+        const effectiveAgentDir = isLoopbackBindHost(trustBindHost) ? agent_dir : undefined;
         const sessionId = await store.create({
           provider,
           model,

@@ -28,6 +28,15 @@ function baseModelId(id: string): string {
   return idx >= 0 ? id.substring(0, idx) : id;
 }
 
+/** Error with HTTP status for the sidecar request handler. */
+type HttpError = Error & { statusCode: number };
+
+function httpError(message: string, statusCode: number): HttpError {
+  const err = new Error(message) as HttpError;
+  err.statusCode = statusCode;
+  return err;
+}
+
 const DISCOVERY_TIMEOUT_MS = 30_000;
 
 /**
@@ -385,9 +394,7 @@ export class SessionStore {
 
   private assertNotDisposed(action: string): void {
     if (this._disposed) {
-      const err = new Error(`SessionStore is shutting down; ${action} is no longer available`);
-      (err as any).statusCode = 503;
-      throw err;
+      throw httpError(`SessionStore is shutting down; ${action} is no longer available`, 503);
     }
   }
 
@@ -422,11 +429,10 @@ export class SessionStore {
       }
     }
     if (!this.modelRuntime || !this.modelRegistry) {
-      const err = new Error(
+      throw httpError(
         "Model discovery failed; runtime unavailable. See GET /health.",
+        503,
       );
-      (err as Error & { statusCode?: number }).statusCode = 503;
-      throw err;
     }
   }
 
@@ -720,11 +726,10 @@ export class SessionStore {
     // browser OAuth and cannot work in this headless process — reject early
     // rather than letting callers bypass the catalog filter.
     if (HEADLESS_EXCLUDED_PROVIDERS.has(options.provider)) {
-      const err = new Error(
+      throw httpError(
         `Provider '${options.provider}' requires interactive browser OAuth and cannot be used in this headless sidecar. Use GET /models to list available providers.`,
+        400,
       );
-      (err as Error & { statusCode?: number }).statusCode = 400;
-      throw err;
     }
 
     await this.ensureInternalRuntime();
@@ -821,9 +826,10 @@ export class SessionStore {
     // Fast-fail when the subagent extension file is missing before we build a loader.
     // Actual load success is verified after reload() below.
     if (tools.includes("subagent") && !subagentPathFound) {
-      const err = new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
-      (err as any).statusCode = 400;
-      throw err;
+      throw httpError(
+        "Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.",
+        400,
+      );
     }
     // Include custom tool names in the allowed tools list so the SDK
     // doesn't filter them out via allowedToolNames.
@@ -873,9 +879,10 @@ export class SessionStore {
         logger.error(
           `[sidecar] SUBAGENT_LOAD_FAILED: path=${SUBAGENT_EXTENSION}, error=${loadError?.error ?? "extension_not_in_loader_result"}`,
         );
-        const err = new Error("Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.");
-        (err as any).statusCode = 400;
-        throw err;
+        throw httpError(
+          "Tool 'subagent' was requested but the subagent extension could not be loaded. Check logs for details.",
+          400,
+        );
       }
     }
 
@@ -901,9 +908,7 @@ export class SessionStore {
       } catch (err) {
         logger.warn(`[sidecar] SESSION_ORPHAN_DISPOSE_FAILED: session=${id}`, err);
       }
-      const err = new Error("Sidecar is shutting down");
-      (err as Error & { statusCode?: number }).statusCode = 503;
-      throw err;
+      throw httpError("Sidecar is shutting down", 503);
     }
 
     this.sessions.set(id, { session, lastActivity: Date.now(), inFlight: false });

@@ -211,14 +211,22 @@ async def test_abort_inflight(client: SidecarClient, provider: str, model: str, 
         logger.info("SEND abort session=%s", sid)
         try:
             result = await asyncio.wait_for(task, timeout=90)
-            logger.info(
-                "RECV after abort success=%s error=%r text=%r",
-                result.success,
-                result.error,
-                result.text,
-            )
+        except TimeoutError:
+            pytest.fail("in-flight prompt did not settle within 90s after abort")
         except Exception as exc:
+            # Abort may tear down the HTTP stream; that is an acceptable outcome.
             logger.info("RECV after abort exception=%s", exc)
+            return
+        logger.info(
+            "RECV after abort success=%s error=%r text=%r",
+            result.success,
+            result.error,
+            result.text,
+        )
+        # Prompt settled: either aborted (error) or finished before abort took effect.
+        assert isinstance(result.success, bool)
+        if not result.success:
+            assert result.error, "unsuccessful prompt after abort must set error"
     finally:
         try:
             await client.delete_session(sid)

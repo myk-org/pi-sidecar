@@ -259,12 +259,17 @@ start_foreground() {
     echo "Log: ${LOG_FILE}"
     ensure_log_dir
     # Prefer compiled dist/server.js (published package); fall back to tsx+src for local checkout.
+    # Do NOT use `exec cmd | tee` — exec only applies to the left of a pipe and leaves the
+    # sidecar as a non-PID-1 pipeline member (broken signals / orphan on shell exit).
+    # Redirect the shell through tee, then exec the server as this process.
     if [[ -f "${PKG_ROOT}/dist/server.js" ]]; then
+        exec > >(tee -a "${LOG_FILE}") 2>&1
         exec env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
-            node "${PKG_ROOT}/dist/server.js" 2>&1 | tee -a "${LOG_FILE}"
+            node "${PKG_ROOT}/dist/server.js"
     elif [[ -f "${PKG_ROOT}/src/server.ts" ]]; then
+        exec > >(tee -a "${LOG_FILE}") 2>&1
         exec env SIDECAR_PORT="${PORT}" SIDECAR_HOST="${HOST}" \
-            npx tsx "${PKG_ROOT}/src/server.ts" 2>&1 | tee -a "${LOG_FILE}"
+            npx tsx "${PKG_ROOT}/src/server.ts"
     else
         die "No sidecar entrypoint found under ${PKG_ROOT} (expected dist/server.js or src/server.ts)"
     fi
