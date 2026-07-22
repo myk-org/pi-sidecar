@@ -87,6 +87,42 @@ export function sanitizeForLog(value: string): string {
   return value.replace(/[\0-\x1f\x7f]/g, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
 }
 
+/**
+ * True when the bind address is loopback-only. Used to decide whether
+ * GET /models/:provider/status may return full auth diagnostics.
+ * Fail-closed: unrecognized forms are treated as non-loopback (over-redact).
+ */
+export function isLoopbackBindHost(host: string): boolean {
+  const h = host.trim().toLowerCase();
+  if (h === "localhost" || h === "::1" || h === "0:0:0:0:0:0:0:1") return true;
+  // IPv4-mapped loopback (::ffff:127.0.0.1 or ::ffff:7f00:1)
+  if (h === "::ffff:127.0.0.1" || h === "::ffff:7f00:1") return true;
+  // Any 127.0.0.0/8 address Node may report after listen
+  if (/^127(?:\.(?:\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])){3}$/.test(h)) return true;
+  return false;
+}
+
+/**
+ * Strip auth-configuration detail (env labels, credential sources) for
+ * non-loopback binds. Keeps authStatus.configured (boolean) and authCheck.type
+ * (string); strips source/label. Loopback responses pass through.
+ */
+export function redactProviderStatusAuth<T extends {
+  authStatus: { configured: boolean; source?: string; label?: string } | null;
+  authCheck: { type: string; source?: string } | null;
+}>(status: T, bindHost: string): T {
+  if (isLoopbackBindHost(bindHost)) return status;
+  return {
+    ...status,
+    authStatus: status.authStatus == null
+      ? null
+      : { configured: !!status.authStatus.configured },
+    authCheck: status.authCheck == null
+      ? null
+      : { type: status.authCheck.type },
+  };
+}
+
 export interface SidecarHandle {
   close(): Promise<void>;
 }
@@ -161,6 +197,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
     options?.host ??
     process.env.SIDECAR_HOST ??
     (process.env.DEV_MODE === "true" ? "0.0.0.0" : "127.0.0.1");
+  // Prefer the post-listen address (server.address()) for trust decisions so
+  // redaction matches what Node actually bound, not just the config string.
+  let trustBindHost = HOST;
 
   const store = new SessionStore();
 
@@ -300,7 +339,10 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       const statusParams = routeMatch(url, "/models/:provider/status");
       if (method === "GET" && statusParams) {
         const providerLog = sanitizeForLog(statusParams.provider);
-        const status = await store.getProviderStatus(statusParams.provider);
+        const status = redactProviderStatusAuth(
+          await store.getProviderStatus(statusParams.provider),
+          trustBindHost,
+        );
         if (!status.registered) {
           logger.warn(
             `[sidecar] GET /models/${providerLog}/status 404 ${Date.now() - requestStart}ms: registered=false`,
@@ -472,8 +514,12 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   }, 10 * 60 * 1000);
 
   server.listen(PORT, HOST, () => {
+    const addr = server.address();
+    if (addr && typeof addr === "object" && addr.address) {
+      trustBindHost = addr.address;
+    }
     logger.info(`[sidecar] Pi SDK sidecar listening on http://${HOST}:${PORT}`);
-    logger.info(`[sidecar] Config: host=${HOST}, port=${PORT}, devMode=${process.env.DEV_MODE || 'false'}, logLevel=${process.env.PI_SIDECAR_LOG_LEVEL || 'info'}`);
+    logger.info(`[sidecar] Config: host=${HOST}, port=${PORT}, trustBindHost=${trustBindHost}, devMode=${process.env.DEV_MODE || 'false'}, logLevel=${process.env.PI_SIDECAR_LOG_LEVEL || 'info'}`);
     const watchdogUrl = options?.watchdogUrl || process.env.SIDECAR_WATCHDOG_URL;
     if (watchdogUrl) {
       logger.info(`[sidecar] Watchdog enabled: url=${watchdogUrl}`);

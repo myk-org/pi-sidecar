@@ -31,7 +31,8 @@ pi-sidecar/                        (repo root = npm package root)
 │   ├── logger.ts                   # Log-level-aware logger wrapping console.* APIs (gated by PI_SIDECAR_LOG_LEVEL)
 │   └── watchdog.ts                 # Health-check poller; kills sidecar when backend is unresponsive
 ├── scripts/
-│   └── start-sidecar.sh            # Sidecar startup script (canonical location). .dev/start-sidecar.sh, if present locally, is a gitignored (.dev/ is untracked) exec shim kept only for individual devs' muscle memory — it is not part of the published package.
+│   ├── start-sidecar.sh            # Sidecar startup script (canonical location). .dev/start-sidecar.sh, if present locally, is a gitignored (.dev/ is untracked) exec shim kept only for individual devs' muscle memory — it is not part of the published package.
+│   └── enforce-protobufjs-floor.mjs # postinstall: replace shrinkwrap-sealed nested protobufjs below CVE floor
 ├── tests/
 │   ├── test_ts/                    # TypeScript sidecar tests
 │   │   ├── acpx-provider-integration.test.ts # ACPX extension path resolution and discoverAcpxModels tests
@@ -41,6 +42,7 @@ pi-sidecar/                        (repo root = npm package root)
 │   │   ├── message-boundary.test.ts # Multi-message newline separator tests
 │   │   ├── parse-body.test.ts     # Body parser tests
 │   │   ├── pi-version.test.ts     # compareVersions, getInstalledPiVersion, assertPiVersionFloor tests
+│   │   ├── provider-status-redact.test.ts # isLoopbackBindHost / redactProviderStatusAuth coverage
 │   │   ├── route-match.test.ts    # URL route matching tests, incl. /models/:provider/status
 │   │   ├── session-store.test.ts             # SessionStore lifecycle (fully mocked runtime)
 │   │   ├── snapshot-agent-source.test.ts # snapshotAgentSource() modelRuntime-vs-fallback branch coverage (mocked)
@@ -195,7 +197,7 @@ Custom tools with an `http` property are automatically wrapped with the HTTP too
 
 The HTTP server binds to `127.0.0.1` unless overridden by `startSidecar({ host })`, `SIDECAR_HOST`, or `DEV_MODE=true` (which opens `0.0.0.0`). Precedence is options → `SIDECAR_HOST` → `DEV_MODE` → localhost. There is **no authentication** on the sidecar API — security relies on the network boundary. Do not add auth; instead, keep the server local and use the Python client from the same host.
 
-`GET /models/:provider/status` is an intentional diagnostic endpoint under this same trust model: it returns registration state, model count, and raw `checkAuth()`/`getProviderAuthStatus()` output for a provider — including auth-configuration detail beyond a simple boolean — so operators can debug "why isn't provider X showing models" without grepping logs. This is deliberate, not an oversight: since the server is localhost-only with no auth by design, any caller who can reach this endpoint could already create sessions and use every configured provider's models directly, so the diagnostic detail here doesn't cross a new trust boundary. Do not scrub this endpoint's fields to a boolean — if a future requirement needs the API remotely reachable (`DEV_MODE=true` or otherwise), reduce it to a boolean at that point rather than preemptively.
+`GET /models/:provider/status` is an intentional diagnostic endpoint under this same trust model: it returns registration state, model count, and raw `checkAuth()`/`getProviderAuthStatus()` output for a provider — including auth-configuration detail beyond a simple boolean — so operators can debug "why isn't provider X showing models" without grepping logs. On loopback binds this is deliberate: any caller who can reach the endpoint could already create sessions and use every configured provider's models, so the diagnostic detail doesn't cross a new trust boundary. When the bind host is non-loopback (`SIDECAR_HOST` / `DEV_MODE=true` / `startSidecar({ host })`), `authStatus`/`authCheck` are redacted to `{ configured }` / `{ type }` only (no `source`/`label`) before the response is sent.
 
 ### 5. ACPX model discovery uses `acpx/runtime` library, not CLI
 
@@ -265,7 +267,7 @@ This remains low-risk for the sidecar: the DoS requires parsing an attacker-supp
 - **User sessions**: created against `this.modelRuntime` (shared with the internal runtime) and resolve ACPX/CLI models via `modelRuntime.getModel(provider, id)` **without** reloading ACPX/CLI extensions. User sessions only load Subagent (+ Vertex) extensions themselves.
 - **Dispose vs. `session_shutdown`**: `AgentSessionRuntime.dispose()` emits a `session_shutdown` event that ACPX/CLI extensions listen for to clear their module-level state. A plain `session.dispose()` (used for user sessions) does **not** emit this event and is safe only because user sessions never own ACPX/CLI `AgentState`. Never rely on a bare session dispose to reset the internal registrar.
 - **Shutdown order**: `disposeAll()` is `async` — it disposes all user sessions first, then `await`s `internalRuntime.dispose()` last, then clears refs. `close()` in `src/index.ts` and the watchdog's `onDead` callback both `await` `disposeAll()`.
-- **`getProviderStatus(provider)`**: returns registration/auth status (`checkAuth`, `getProviderAuthStatus`) plus a model count sourced from the ACPX/CLI cache (extension providers) or the live provider (builtins). Exposed via `GET /models/:provider/status` (**404** when the provider is not registered on the shared `ModelRuntime`; **200** with full status when it is). Mirrored in the Python client as `SidecarClient.get_model_provider_status()` (not a module-level helper like `call_ai`/`list_models` — call it via the client instance/singleton; raises on HTTP 404 via httpx).
+- **`getProviderStatus(provider)`**: returns registration/auth status (`checkAuth`, `getProviderAuthStatus`) plus a model count sourced from the ACPX/CLI cache (extension providers) or the live provider (builtins). Exposed via `GET /models/:provider/status` (**404** when the provider is not registered on the shared `ModelRuntime`; **200** when it is). Store method returns full auth detail; the HTTP layer applies §4 redaction on non-loopback binds (`authStatus`/`authCheck` → `{ configured }` / `{ type }` only). Mirrored in the Python client as `SidecarClient.get_model_provider_status()` (not a module-level helper like `call_ai`/`list_models` — call it via the client instance/singleton; raises on HTTP 404 via httpx).
 
 ### 12. Pi SDK version floor is enforced fail-fast; `peerDependencies` mirror it as documentation
 

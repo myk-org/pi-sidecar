@@ -173,10 +173,12 @@ class SidecarClient:
               providers, or the live catalog for builtins).
             - ``authStatus`` (dict | None): result of
               ``ModelRuntime.getProviderAuthStatus()``, or ``None`` if that
-              call raised.
+              call raised. On non-loopback sidecar binds the response is
+              redacted to ``{"configured": bool}`` only (no ``source``/``label``).
             - ``authCheck`` (dict | None): result of
               ``ModelRuntime.checkAuth()``, or ``None`` if unregistered or
-              that call raised.
+              that call raised. On non-loopback binds redacted to
+              ``{"type": ...}`` only (no ``source``).
 
         Raises:
             httpx.HTTPStatusError: If the provider is not registered (HTTP

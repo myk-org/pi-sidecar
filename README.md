@@ -8,7 +8,7 @@ A standalone HTTP service that wraps the [Pi coding agent SDK](https://www.npmjs
 
 - **Session management** — create, prompt, abort, and delete AI sessions over REST
 - **Model discovery** — auto-discover models from ACPX agents, CLI providers (`cli-*`), and built-in providers
-- **Provider diagnostics** — `GET /models/:provider/status` reports registration, model count, and auth status for a single provider (Python: `SidecarClient.get_model_provider_status()`)
+- **Provider diagnostics** — `GET /models/:provider/status` reports registration, model count, and auth status for a single provider (Python: `SidecarClient.get_model_provider_status()`). Full auth detail on loopback; on non-loopback binds (`SIDECAR_HOST` / `DEV_MODE`) `authStatus`/`authCheck` are redacted to `{ configured }` / `{ type }`
 - **Custom tools** — plug in domain-specific tools at session creation via `custom_tools`
 - **HTTP-backed tools** — custom tools with `http` config get automatic request execution with parameter interpolation and security hardening
 - **Subagent delegation** — delegate tasks to specialized agents via the `subagent` tool (loaded as a Pi SDK extension)
