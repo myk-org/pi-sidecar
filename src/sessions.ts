@@ -612,6 +612,17 @@ export class SessionStore {
       throw new Error(`Model is required. Use GET /models to list available models.`);
     }
 
+    // Match getModels()/getProviderStatus(): these providers need interactive
+    // browser OAuth and cannot work in this headless process — reject early
+    // rather than letting callers bypass the catalog filter.
+    if (HEADLESS_EXCLUDED_PROVIDERS.has(options.provider)) {
+      const err = new Error(
+        `Provider '${options.provider}' requires interactive browser OAuth and cannot be used in this headless sidecar. Use GET /models to list available providers.`,
+      );
+      (err as Error & { statusCode?: number }).statusCode = 400;
+      throw err;
+    }
+
     await this.ensureInternalRuntime();
 
     const isAcpxProvider = options.provider.startsWith("acpx-");

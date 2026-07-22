@@ -243,6 +243,21 @@ describe("SessionStore (mocked runtime)", () => {
     });
   });
 
+  it("create() rejects HEADLESS_EXCLUDED_PROVIDERS (e.g. github-copilot)", async () => {
+    const store = new SessionStore() as any;
+    installMockRuntime(store);
+    await assert.rejects(
+      () =>
+        store.create({
+          provider: "github-copilot",
+          model: "gpt-4.1",
+          systemPrompt: "test",
+          cwd: "/tmp",
+        }),
+      /requires interactive browser OAuth/,
+    );
+  });
+
   it("disposeAll() awaits in-flight runtimeInit and disposes a runtime assigned mid-shutdown", async () => {
     const store = new SessionStore() as any;
     let runtimeDisposed = false;

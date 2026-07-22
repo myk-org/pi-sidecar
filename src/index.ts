@@ -155,6 +155,8 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   // Declared early so shutdownSidecar can clear them; assigned after createServer.
   let cleanupInterval: ReturnType<typeof setInterval> | undefined;
   let stopWatchdog: (() => void) | undefined;
+  // Memoize shutdown so concurrent watchdog + close() share one teardown.
+  let shutdownPromise: Promise<void> | undefined;
 
   async function waitForIdleRequests(timeoutMs: number): Promise<void> {
     const start = Date.now();
@@ -169,22 +171,35 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
   }
 
   async function shutdownSidecar(reason: string): Promise<void> {
-    logger.info(`[sidecar] Shutting down: reason=${reason}`);
-    draining = true;
-    stopWatchdog?.();
-    if (cleanupInterval !== undefined) clearInterval(cleanupInterval);
-    // Stop accepting new connections, then wait for in-flight handlers, then
-    // dispose the store. Disposing before handlers finish races prompt/abort.
-    const closed = new Promise<void>((resolve, reject) => {
-      server.close((err) => {
-        if (err) reject(err);
-        else resolve();
+    if (shutdownPromise) {
+      logger.info(`[sidecar] Shutting down: reason=${reason}, action=join_in_progress`);
+      return shutdownPromise;
+    }
+    shutdownPromise = (async () => {
+      logger.info(`[sidecar] Shutting down: reason=${reason}`);
+      draining = true;
+      stopWatchdog?.();
+      if (cleanupInterval !== undefined) clearInterval(cleanupInterval);
+      // Stop accepting new connections, then wait for in-flight handlers, then
+      // dispose the store. Disposing before handlers finish races prompt/abort.
+      const closed = new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          // Idempotent: a second close after the server already stopped is fine.
+          if (err && (err as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING") {
+            resolve();
+          } else if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
       });
-    });
-    await closed;
-    await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
-    await store.disposeAll();
-    logger.info("[sidecar] Shut down");
+      await closed;
+      await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
+      await store.disposeAll();
+      logger.info("[sidecar] Shut down");
+    })();
+    return shutdownPromise;
   }
 
   const server = createServer(async (req, res) => {
