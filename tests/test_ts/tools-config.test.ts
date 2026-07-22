@@ -107,7 +107,7 @@ describe("POST /sessions input validation", () => {
     const stream = createMockRequest(body);
     const parsed = await parseBody(stream as unknown as IncomingMessage);
     const hasNulls = Array.isArray(parsed.custom_tools) &&
-      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.trim().length > 0);
     assert.equal(hasNulls, true);
   });
 
@@ -121,7 +121,7 @@ describe("POST /sessions input validation", () => {
     const stream = createMockRequest(body);
     const parsed = await parseBody(stream as unknown as IncomingMessage);
     const hasArrays = Array.isArray(parsed.custom_tools) &&
-      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.trim().length > 0);
     assert.equal(hasArrays, true);
   });
 
@@ -135,7 +135,7 @@ describe("POST /sessions input validation", () => {
     const stream = createMockRequest(body);
     const parsed = await parseBody(stream as unknown as IncomingMessage);
     const missingName = Array.isArray(parsed.custom_tools) &&
-      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.trim().length > 0);
     assert.equal(missingName, true);
   });
 
@@ -149,8 +149,22 @@ describe("POST /sessions input validation", () => {
     const stream = createMockRequest(body);
     const parsed = await parseBody(stream as unknown as IncomingMessage);
     const hasEmptyName = Array.isArray(parsed.custom_tools) &&
-      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0);
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.trim().length > 0);
     assert.equal(hasEmptyName, true);
+  });
+
+  it("rejects custom_tools entries with whitespace-only name", async () => {
+    const body = {
+      provider: "google",
+      model: "gemini-2.5-flash",
+      system_prompt: "test",
+      custom_tools: [{ name: "   ", description: "whitespace name" }],
+    };
+    const stream = createMockRequest(body);
+    const parsed = await parseBody(stream as unknown as IncomingMessage);
+    const hasWhitespaceName = Array.isArray(parsed.custom_tools) &&
+      !parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.trim().length > 0);
+    assert.equal(hasWhitespaceName, true);
   });
 
   it("accepts valid custom_tools array", async () => {
@@ -163,7 +177,7 @@ describe("POST /sessions input validation", () => {
     const stream = createMockRequest(body);
     const parsed = await parseBody(stream as unknown as IncomingMessage);
     const isValid = parsed.custom_tools === undefined ||
-      (Array.isArray(parsed.custom_tools) && parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0));
+      (Array.isArray(parsed.custom_tools) && parsed.custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.trim().length > 0));
     assert.equal(isValid, true);
   });
 

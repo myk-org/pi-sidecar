@@ -418,9 +418,27 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
             sendJson(res, 400, { error: "custom_tools must be an array" });
             return;
           }
-          if (!custom_tools.every((t: any) => t != null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string" && t.name.length > 0)) {
-            logger.warn(`[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=custom_tools, reason=entries must be plain objects with string name`);
-            sendJson(res, 400, { error: "custom_tools entries must be plain objects with a string 'name' property" });
+          const invalidIndexes: number[] = [];
+          for (let i = 0; i < custom_tools.length; i++) {
+            const t = custom_tools[i];
+            if (!(
+              t != null
+              && typeof t === "object"
+              && !Array.isArray(t)
+              && typeof t.name === "string"
+              && t.name.trim().length > 0
+            )) {
+              invalidIndexes.push(i);
+            }
+          }
+          if (invalidIndexes.length > 0) {
+            logger.warn(
+              `[sidecar] POST /sessions 400 ${Date.now() - requestStart}ms: validation=failed, field=custom_tools, reason=entries must be plain objects with non-empty name, invalid_indexes=${invalidIndexes.join(",")}`,
+            );
+            sendJson(res, 400, {
+              error: "custom_tools entries must be plain objects with a non-empty string 'name' property",
+              invalid_indexes: invalidIndexes,
+            });
             return;
           }
         }

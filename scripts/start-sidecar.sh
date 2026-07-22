@@ -25,7 +25,16 @@ case "${HOST}" in
     ::)      readonly HEALTH_HOST="::1" ;;
     *)       readonly HEALTH_HOST="${HOST}" ;;
 esac
-readonly HEALTH_URL="http://${HEALTH_HOST}:${PORT}/health"
+# IPv6 literals must be bracketed in URL authorities (http://[::1]:9201/...).
+host_for_url() {
+    local h="$1"
+    case "${h}" in
+        \[*\]) printf '%s\n' "${h}" ;;
+        *:*)   printf '[%s]\n' "${h}" ;;
+        *)     printf '%s\n' "${h}" ;;
+    esac
+}
+readonly HEALTH_URL="http://$(host_for_url "${HEALTH_HOST}"):${PORT}/health"
 readonly HEALTH_TIMEOUT=60
 
 # ── Helpers ──────────────────────────────────────────────
@@ -150,7 +159,7 @@ start_background() {
 
     echo "──────────────────────────────────────"
     echo "pi-sidecar running"
-    echo "  URL : http://${HOST}:${PORT}"
+    echo "  URL : http://$(host_for_url "${HOST}"):${PORT}"
     echo "  PID : ${pid}"
     echo "  Log : ${LOG_FILE}"
     echo "──────────────────────────────────────"
