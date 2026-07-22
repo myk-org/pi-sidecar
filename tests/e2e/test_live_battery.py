@@ -22,6 +22,16 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.e2e]
 logger = logging.getLogger("e2e")
 
 
+def _provider_status_log_fields(st: dict) -> dict:
+    """Non-sensitive provider-status fields safe for e2e logs."""
+    auth_status = st.get("authStatus")
+    return {
+        "registered": st.get("registered"),
+        "modelCount": st.get("modelCount"),
+        "auth_configured": (auth_status.get("configured") if isinstance(auth_status, dict) else None),
+    }
+
+
 # --- sidecar smoke (no provider param) ---
 
 
@@ -58,7 +68,7 @@ async def test_status_github_copilot_excluded(client: SidecarClient) -> None:
         if e.response.status_code == 404:
             pytest.skip("github-copilot not registered")
         raise
-    logger.info("status github-copilot=%s", st)
+    logger.info("status github-copilot=%s", _provider_status_log_fields(st))
     assert st.get("modelCount") == 0
     assert st.get("authCheck") is None
 
@@ -117,7 +127,7 @@ async def test_status_provider(client: SidecarClient, provider: str) -> None:
         if e.response.status_code == 404:
             pytest.skip(f"{provider} not registered")
         raise
-    logger.info("status provider=%s status=%s", provider, st)
+    logger.info("status provider=%s fields=%s", provider, _provider_status_log_fields(st))
     assert st.get("registered") is True, st
 
 
@@ -213,7 +223,13 @@ async def test_abort_inflight(client: SidecarClient, provider: str, model: str, 
         try:
             await client.delete_session(sid)
         except Exception:
-            pass
+            logger.warning(
+                "delete_session failed after abort test provider=%s model=%s session=%s",
+                provider,
+                model,
+                sid,
+                exc_info=True,
+            )
 
 
 @pytest.mark.parametrize("idx", [0, 1, 2], ids=["p0", "p1", "p2"])

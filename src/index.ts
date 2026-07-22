@@ -315,7 +315,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
     const requestStart = Date.now();
 
     if (draining) {
-      logger.warn(`[sidecar] REQUEST_REJECTED: method=${method}, url=${url.split("?")[0]}, reason=server_shutting_down`);
+      logger.warn(`[sidecar] REQUEST_REJECTED: method=${method}, url=${sanitizeForLog(url.split("?")[0])}, reason=server_shutting_down`);
       sendJson(res, 503, { error: "Server is shutting down" });
       return;
     }
@@ -497,7 +497,7 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         }
         logger.debug(`[sidecar] POST /sessions/${idLog}/prompt: message_length=${body.message.length}`);
         const result = await store.prompt(params.id, body.message);
-        logger.info(`[sidecar] POST /sessions/${idLog}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${result.error}` : ""}`);
+        logger.info(`[sidecar] POST /sessions/${idLog}/prompt 200 ${Date.now() - requestStart}ms text_length=${result.text.length}${result.error ? ` error=${sanitizeForLog(result.error)}` : ""}`);
         sendJson(res, 200, result);
         return;
       }
@@ -524,11 +524,11 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         return;
       }
 
-      logger.debug(`[sidecar] Route not found: ${method} ${url}`);
+      logger.debug(`[sidecar] Route not found: ${method} ${sanitizeForLog(url.split("?")[0])}`);
       sendJson(res, 404, { error: "Not found" });
     } catch (err: any) {
       const message = err?.message || "Internal server error";
-      const sanitizedUrl = url.split("?")[0]; // Strip query params before logging
+      const sanitizedUrl = sanitizeForLog(url.split("?")[0]); // Strip query params before logging
       const rawStatus = typeof err?.statusCode === "number" && err.statusCode >= 100 && err.statusCode <= 599
         ? err.statusCode
         : undefined;
@@ -542,9 +542,9 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
         : message.includes("not found") ? 404
         : 500);
       if (status === 500) {
-        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`, err);
+        logger.error(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${sanitizeForLog(message)}`, err);
       } else {
-        logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${message}`);
+        logger.warn(`[sidecar] REQUEST_FAILED: method=${method}, url=${sanitizedUrl}, status=${status}, duration_ms=${Date.now() - requestStart}, error=${sanitizeForLog(message)}`);
       }
       sendJson(res, status, { error: message });
     } finally {

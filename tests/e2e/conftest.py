@@ -11,11 +11,15 @@ Never reads or writes ~/.pi or the repo's .pi/pi-config-settings.json.
 ACPX getSetting is project → global → env; global ~/.pi often pins acpx_agents=["cursor"].
 We plant settings only under {E2E_TEST_CWD}/.pi/ and start the sidecar with that cwd
 so process.cwd() picks the e2e project settings (never the user's home or repo .pi).
+
+``pi_sidecar_client.SIDECAR_URL`` is env-backed; assignment or ``os.environ["SIDECAR_URL"]``
+sets the URL that ``SidecarClient()`` reads at construction.
 """
 
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import logging
 import os
@@ -78,7 +82,12 @@ def _health_ok(url: str) -> bool:
     try:
         r = httpx.get(f"{url}/health", timeout=2.0)
         return r.status_code == 200 and r.json().get("status") == "ok"
-    except Exception:
+    except (httpx.ConnectError, httpx.TimeoutException, OSError) as exc:
+        # Expected while sidecar is down / still starting — one-line, no stack spam.
+        logger.debug("health check failed url=%s err=%s", url, exc)
+        return False
+    except Exception as exc:
+        logger.debug("health check unexpected failure url=%s err=%s", url, exc, exc_info=True)
         return False
 
 
@@ -86,10 +95,40 @@ def _stop_sidecar(port: int, url: str) -> None:
     env = {**os.environ, "SIDECAR_PORT": str(port)}
     subprocess.run([str(START_SCRIPT), "--stop"], cwd=REPO_ROOT, env=env, check=False)
     if _health_ok(url):
-        subprocess.run(["fuser", "-k", f"{port}/tcp"], check=False, capture_output=True)
-        time.sleep(1)
+        fuser = shutil.which("fuser")
+        if fuser is None:
+            logger.warning("fuser not found; skipping force-kill of port=%s", port)
+        else:
+            subprocess.run([fuser, "-k", f"{port}/tcp"], check=False, capture_output=True)
+            time.sleep(1)
     if _health_ok(url):
         raise RuntimeError(f"sidecar still up at {url} after stop; kill on host: fuser -k {port}/tcp")
+
+
+def _ensure_dist_built() -> None:
+    """Build dist/server.js once across xdist workers via a cross-process flock.
+
+    Always take the exclusive lock before trusting dist/server.js so a concurrent
+    npm build cannot leave another worker reading a mid-write file.
+    """
+    dist_dir = REPO_ROOT / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    dist_server = dist_dir / "server.js"
+    lock_path = dist_dir / ".npm-build.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            if dist_server.is_file():
+                return
+            logger.info("building dist/server.js via npm run build")
+            subprocess.run(["npm", "run", "build"], cwd=REPO_ROOT, check=True)
+            logger.info("dist/server.js build complete")
+            if not dist_server.is_file():
+                raise RuntimeError(
+                    f"npm run build completed but {dist_server} is missing; check the build output for errors"
+                )
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _model_ids(models: list[dict], provider: str) -> list[str]:
@@ -144,7 +183,13 @@ async def _probe_first_working(
             try:
                 await client.delete_session(sid)
             except Exception:
-                pass
+                logger.warning(
+                    "PROBE delete_session failed provider=%s model=%s session=%s",
+                    provider,
+                    mid,
+                    sid,
+                    exc_info=True,
+                )
     return None
 
 
@@ -154,18 +199,18 @@ def _e2e_disable_ssl_verify() -> Iterator[None]:
     _orig_async = httpx.AsyncClient
     _orig_sync = httpx.Client
 
-    class _NoVerifyAsyncClient(_orig_async):  # type: ignore[valid-type,misc]
+    class NoVerifyAsyncClient(_orig_async):  # type: ignore[valid-type,misc]
         def __init__(self, *args: object, **kwargs: object) -> None:
             kwargs["verify"] = False
             super().__init__(*args, **kwargs)
 
-    class _NoVerifyClient(_orig_sync):  # type: ignore[valid-type,misc]
+    class NoVerifyClient(_orig_sync):  # type: ignore[valid-type,misc]
         def __init__(self, *args: object, **kwargs: object) -> None:
             kwargs["verify"] = False
             super().__init__(*args, **kwargs)
 
-    httpx.AsyncClient = _NoVerifyAsyncClient  # type: ignore[misc,assignment]
-    httpx.Client = _NoVerifyClient  # type: ignore[misc,assignment]
+    httpx.AsyncClient = NoVerifyAsyncClient  # type: ignore[misc,assignment]
+    httpx.Client = NoVerifyClient  # type: ignore[misc,assignment]
     try:
         yield
     finally:
@@ -175,7 +220,10 @@ def _e2e_disable_ssl_verify() -> Iterator[None]:
 
 @pytest.fixture(scope="session")
 def test_cwd() -> Path:
-    cwd = Path(os.environ.get("E2E_TEST_CWD", "/tmp/e2e-pi-sidecar-tests"))
+    base = Path(os.environ.get("E2E_TEST_CWD", "/tmp/e2e-pi-sidecar-tests"))
+    worker = os.environ.get("PYTEST_XDIST_WORKER")  # gw0, gw1, … or None when not under xdist
+    # E2E_TEST_CWD is a shared base; xdist workers always get base/<worker> to avoid collisions.
+    cwd = base / worker if worker else base
     cwd.mkdir(parents=True, exist_ok=True)
     return cwd
 
@@ -224,29 +272,28 @@ def agent_env(installed_agents: list[str], test_cwd: Path) -> Iterator[list[str]
 @pytest.fixture(scope="session")
 def sidecar_url(agent_env: list[str], test_cwd: Path) -> Iterator[str]:
     host = os.environ.get("SIDECAR_HOST", "127.0.0.1")
-    port = int(os.environ["SIDECAR_PORT"]) if os.environ.get("SIDECAR_PORT") else _pick_free_port()
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        port = _pick_free_port()
+    else:
+        port = int(os.environ["SIDECAR_PORT"]) if os.environ.get("SIDECAR_PORT") else _pick_free_port()
     url = f"http://{host}:{port}"
     agents_csv = ",".join(agent_env)
 
-    if not (REPO_ROOT / "dist" / "server.js").is_file():
-        subprocess.run(["npm", "run", "build"], cwd=REPO_ROOT, check=True)
+    _ensure_dist_built()
 
+    env_overrides = {
+        "SIDECAR_HOST": host,
+        "SIDECAR_PORT": str(port),
+        "SIDECAR_URL": url,
+        "CLI_AGENTS": agents_csv,
+        "ACPX_AGENTS": agents_csv,
+    }
     env = {
         **os.environ,
-        "SIDECAR_HOST": host,
-        "SIDECAR_PORT": str(port),
-        "SIDECAR_URL": url,
-        "CLI_AGENTS": agents_csv,
-        "ACPX_AGENTS": agents_csv,
+        **env_overrides,
         "PI_SIDECAR_LOG_LEVEL": os.environ.get("PI_SIDECAR_LOG_LEVEL", "INFO"),
     }
-    os.environ.update({
-        "SIDECAR_HOST": host,
-        "SIDECAR_PORT": str(port),
-        "SIDECAR_URL": url,
-        "CLI_AGENTS": agents_csv,
-        "ACPX_AGENTS": agents_csv,
-    })
+    os.environ.update(env_overrides)
 
     if _health_ok(url):
         _stop_sidecar(port, url)
@@ -277,7 +324,7 @@ def sidecar_url(agent_env: list[str], test_cwd: Path) -> Iterator[str]:
         try:
             _stop_sidecar(port, url)
         except Exception as exc:
-            logger.error("sidecar stop FAILED: %s", exc)
+            logger.error("sidecar stop FAILED: %s", exc, exc_info=True)
             raise
 
 
@@ -295,7 +342,6 @@ def working_models(
 
     async def _discover() -> dict[str, str]:
         pi_sidecar_client._client = None
-        pi_sidecar_client.SIDECAR_URL = sidecar_url
         os.environ["SIDECAR_URL"] = sidecar_url
         client = SidecarClient(base_url=sidecar_url, verify=False)
         cwd = str(test_cwd)
@@ -353,7 +399,6 @@ def model(provider: str, working_models: dict[str, str]) -> str:
 @pytest.fixture(autouse=True)
 def _reset_client_singleton(sidecar_url: str) -> Iterator[None]:
     pi_sidecar_client._client = None
-    pi_sidecar_client.SIDECAR_URL = sidecar_url
     os.environ["SIDECAR_URL"] = sidecar_url
     yield
     pi_sidecar_client._client = None

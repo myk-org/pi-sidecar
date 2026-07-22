@@ -1,5 +1,6 @@
 """Tests for pi_sidecar_client — all HTTP calls are mocked."""
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -483,6 +484,46 @@ class TestSingleton:
         c2 = get_sidecar_client()
         assert c1 is c2
 
+    def test_sidecar_url_env_backed_at_access_and_construction(self):
+        """SIDECAR_URL, SidecarClient(), and get_sidecar_client() read env."""
+        prev = os.environ.get("SIDECAR_URL")
+        prev_client = pi_sidecar_client._client
+        try:
+            os.environ["SIDECAR_URL"] = "http://127.0.0.1:19100"
+            assert pi_sidecar_client.SIDECAR_URL == "http://127.0.0.1:19100"
+            assert pi_sidecar_client.SIDECAR_URL == "http://127.0.0.1:19100"
+            assert SidecarClient()._base_url == "http://127.0.0.1:19100"
+
+            pi_sidecar_client._client = None
+            singleton = get_sidecar_client()
+            assert singleton._base_url == "http://127.0.0.1:19100"
+
+            os.environ["SIDECAR_URL"] = "http://127.0.0.1:19200"
+            assert pi_sidecar_client.SIDECAR_URL == "http://127.0.0.1:19200"
+            assert SidecarClient()._base_url == "http://127.0.0.1:19200"
+        finally:
+            if prev is None:
+                os.environ.pop("SIDECAR_URL", None)
+            else:
+                os.environ["SIDECAR_URL"] = prev
+            pi_sidecar_client._client = prev_client
+
+    def test_sidecar_url_assignment_sets_env_and_client_base_url(self):
+        """Assigning pi_sidecar_client.SIDECAR_URL updates os.environ and new clients."""
+        prev = os.environ.get("SIDECAR_URL")
+        try:
+            os.environ.pop("SIDECAR_URL", None)
+            pi_sidecar_client.SIDECAR_URL = "http://127.0.0.1:19300/"
+            assert os.environ["SIDECAR_URL"] == "http://127.0.0.1:19300"
+            assert pi_sidecar_client.SIDECAR_URL == "http://127.0.0.1:19300"
+            assert SidecarClient()._base_url == "http://127.0.0.1:19300"
+            assert "SIDECAR_URL" in dir(pi_sidecar_client)
+        finally:
+            if prev is None:
+                os.environ.pop("SIDECAR_URL", None)
+            else:
+                os.environ["SIDECAR_URL"] = prev
+
 
 # ---------------------------------------------------------------------------
 # 6. Utility functions
@@ -512,6 +553,21 @@ class TestUtilityFunctions:
             available, msg = await check_sidecar_available()
             assert available is False
             assert "starting" in msg.lower()
+
+    async def test_check_sidecar_available_503_non_json_body(self):
+        """503 with non-JSON body falls through to unhealthy message."""
+        response = httpx.Response(
+            status_code=503,
+            content=b"Service Temporarily Unavailable",
+            request=httpx.Request("GET", "http://test/health"),
+        )
+        with patch.object(SidecarClient, "health", new_callable=AsyncMock) as mock_health:
+            mock_health.side_effect = httpx.HTTPStatusError(
+                "Service Unavailable", request=response.request, response=response
+            )
+            available, msg = await check_sidecar_available()
+            assert available is False
+            assert msg == "Sidecar unhealthy (HTTP 503)"
 
     async def test_check_sidecar_available_unreachable(self):
         """Health raises ConnectError → (False, 'Sidecar unavailable: ...')."""
