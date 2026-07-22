@@ -90,19 +90,38 @@ function loadJitiExport<T extends Record<string, unknown>>(path: string, exportN
   return resolved;
 }
 
-/** Race a discovery call against DISCOVERY_TIMEOUT_MS; never throws — returns [] on failure. */
+/** In-flight fallback discoveries keyed by `kind:agent` — joiners reuse the same Promise. */
+const inFlightDiscovery = new Map<string, Promise<DiscoveredModel[]>>();
+
+/**
+ * Race a discovery call against DISCOVERY_TIMEOUT_MS; never throws — returns [] on failure.
+ * On timeout the underlying Promise keeps running (no AbortSignal in discover APIs), but is
+ * tracked in `inFlightDiscovery` so a later refresh joins it instead of starting a duplicate.
+ */
 async function raceDiscovery(agent: string, kind: string, run: () => Promise<DiscoveredModel[]>): Promise<DiscoveredModel[]> {
+  const key = `${kind}:${agent}`;
+  let discovery = inFlightDiscovery.get(key);
+  if (!discovery) {
+    discovery = run().finally(() => {
+      if (inFlightDiscovery.get(key) === discovery) {
+        inFlightDiscovery.delete(key);
+      }
+    });
+    inFlightDiscovery.set(key, discovery);
+  } else {
+    logger.debug(`[sidecar] ${kind.toUpperCase()}_DISCOVERY_REUSE: agent=${agent}`);
+  }
+  // Prevent unhandled rejection if the timeout wins and discovery later fails.
+  discovery.catch(() => {});
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const discovery = run();
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         reject(new Error(`${kind} fallback discovery for ${agent} timed out after ${DISCOVERY_TIMEOUT_MS / 1000}s`));
       }, DISCOVERY_TIMEOUT_MS);
     });
-    const result = await Promise.race([discovery, timeout]);
-    clearTimeout(timer!);
-    return result;
+    return await Promise.race([discovery, timeout]);
   } catch (err) {
     logger.warn(`[sidecar] ${kind.toUpperCase()}_DISCOVERY_FALLBACK_FAILED: agent=${agent}`, err);
     return [];

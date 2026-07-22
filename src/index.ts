@@ -186,22 +186,27 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
       if (cleanupInterval !== undefined) clearInterval(cleanupInterval);
       // Stop accepting new connections, then wait for in-flight handlers, then
       // dispose the store. Disposing before handlers finish races prompt/abort.
-      const closed = new Promise<void>((resolve, reject) => {
+      // Always continue to disposeAll even if close() fails — otherwise sessions
+      // and the internal AgentSessionRuntime would be left undisposed.
+      const closed = new Promise<void>((resolve) => {
         server.close((err) => {
-          // Idempotent: a second close after the server already stopped is fine.
-          if (err && (err as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING") {
-            resolve();
-          } else if (err) {
-            reject(err);
-          } else {
-            resolve();
+          if (err && (err as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING") {
+            logger.warn(`[sidecar] SHUTDOWN_CLOSE_FAILED: reason=${reason}`, err);
           }
+          resolve();
         });
       });
-      await closed;
-      await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
-      await store.disposeAll();
-      logger.info(`[sidecar] SHUTDOWN_COMPLETE: reason=${reason}`);
+      try {
+        await closed;
+        await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
+        await store.disposeAll();
+        logger.info(`[sidecar] SHUTDOWN_COMPLETE: reason=${reason}`);
+      } catch (err) {
+        // Allow a later shutdown attempt to retry teardown if dispose failed.
+        shutdownPromise = undefined;
+        logger.error(`[sidecar] SHUTDOWN_FAILED: reason=${reason}`, err);
+        throw err;
+      }
     })();
     return shutdownPromise;
   }
