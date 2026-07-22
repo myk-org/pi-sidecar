@@ -43,7 +43,7 @@ describe("cli-provider extension integration", () => {
     }
   });
 
-  it("loads discoverCliModels via jiti and returns cli-* provider shape", async () => {
+  it("exports discoverCliModels from discover.ts (no live CLI discovery in unit tests)", () => {
     const discoverPath = resolveExtensionPath(
       "UNUSED_ENV_" + Date.now(),
       "pi-orchestrator-config",
@@ -51,6 +51,8 @@ describe("cli-provider extension integration", () => {
     );
     assert.ok(discoverPath.length > 0, "discover.ts should resolve");
 
+    // Load the module only to assert the export shape — do NOT call
+    // discoverCliModels() here (that would spawn/query real CLI agents).
     const jiti = createJiti(import.meta.url);
     const mod = jiti(discoverPath) as {
       discoverCliModels?: (agent: string) => Promise<Array<{ id: string; name: string; provider: string }>>;
@@ -58,14 +60,5 @@ describe("cli-provider extension integration", () => {
     };
     const discoverCliModels = mod.discoverCliModels ?? mod.default?.discoverCliModels;
     assert.equal(typeof discoverCliModels, "function", "discoverCliModels should be exported");
-
-    // Use an agent name that may or may not have a binary — API must not throw.
-    const models = await discoverCliModels!("cursor");
-    assert.ok(Array.isArray(models), "should return an array");
-    for (const m of models) {
-      assert.ok(m.id.startsWith("cursor:"), `id should be namespaced, got: ${m.id}`);
-      assert.equal(m.provider, "cli-cursor", `provider should be cli-cursor, got: ${m.provider}`);
-      assert.ok(typeof m.name === "string" && m.name.length > 0, "name should be non-empty");
-    }
   });
 });

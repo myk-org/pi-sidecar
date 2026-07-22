@@ -54,9 +54,9 @@ describe("MIN_PI_VERSION", () => {
 });
 
 describe("assertPiVersionFloor", () => {
-  it("does not throw when the installed SDK meets the floor", () => {
-    // The repo's own installed @earendil-works/pi-coding-agent is expected to
-    // satisfy MIN_PI_VERSION — this is a real (non-mocked) check.
+  it("does not throw when compareVersions says installed >= floor", () => {
+    // Reads local package.json only (no network). Asserts the installed pin
+    // satisfies MIN_PI_VERSION — dependency presence, not a live resource.
     const installed = getInstalledPiVersion();
     assert.ok(installed, "precondition: installed version must resolve");
     assert.ok(

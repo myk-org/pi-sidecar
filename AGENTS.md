@@ -42,7 +42,7 @@ pi-sidecar/                        (repo root = npm package root)
 │   │   ├── parse-body.test.ts     # Body parser tests
 │   │   ├── pi-version.test.ts     # compareVersions, getInstalledPiVersion, assertPiVersionFloor tests
 │   │   ├── route-match.test.ts    # URL route matching tests, incl. /models/:provider/status
-│   │   ├── session-store-integration.test.ts # SessionStore internal runtime lifecycle (hermetic, real SDK)
+│   │   ├── session-store.test.ts             # SessionStore lifecycle (fully mocked runtime)
 │   │   ├── snapshot-agent-source.test.ts # snapshotAgentSource() modelRuntime-vs-fallback branch coverage (mocked)
 │   │   ├── subagent-integration.test.ts # Subagent extension resolution and env var override tests
 │   │   ├── tools-config.test.ts   # DEFAULT_TOOLS, tools config, and agent_dir validation tests

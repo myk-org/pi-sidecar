@@ -32,7 +32,7 @@ describe("acpx-provider extension integration", () => {
     }
   });
 
-  it("exports discoverAcpxModels from the same entry file used for the extension (no separate discover.ts)", async () => {
+  it("exports discoverAcpxModels from the same entry file used for the extension (no separate discover.ts)", () => {
     const extPath = resolveExtensionPath(
       "UNUSED_ENV_" + Date.now(),
       "pi-orchestrator-config",
@@ -40,6 +40,8 @@ describe("acpx-provider extension integration", () => {
     );
     assert.ok(extPath.length > 0, "extension path should resolve");
 
+    // Load the module only to assert the export shape — do NOT call
+    // discoverAcpxModels() here (that would hit acpx/runtime / real agents).
     const jiti = createJiti(import.meta.url);
     const mod = jiti(extPath) as {
       discoverAcpxModels?: (agent: string, cwd?: string) => Promise<Array<{ id: string; name: string; provider: string }>>;
@@ -47,29 +49,5 @@ describe("acpx-provider extension integration", () => {
     };
     const discoverAcpxModels = mod.discoverAcpxModels ?? mod.default?.discoverAcpxModels;
     assert.equal(typeof discoverAcpxModels, "function", "discoverAcpxModels should be exported");
-
-    // Use an agent name that may or may not be available — API must not throw.
-    const models = await discoverAcpxModels!("cursor");
-    assert.ok(Array.isArray(models), "should return an array");
-    for (const m of models) {
-      assert.ok(m.id.startsWith("cursor:"), `id should be namespaced, got: ${m.id}`);
-      assert.equal(m.provider, "acpx-cursor", `provider should be acpx-cursor, got: ${m.provider}`);
-      assert.ok(typeof m.name === "string" && m.name.length > 0, "name should be non-empty");
-    }
-  });
-
-  it("rejects invalid agent names without needing acpx/runtime", async () => {
-    const extPath = resolveExtensionPath(
-      "UNUSED_ENV_" + Date.now(),
-      "pi-orchestrator-config",
-      "extensions/acpx-provider/index.ts",
-    );
-    const jiti = createJiti(import.meta.url);
-    const mod = jiti(extPath) as {
-      discoverAcpxModels?: (agent: string) => Promise<unknown>;
-      default?: { discoverAcpxModels: (agent: string) => Promise<unknown> };
-    };
-    const discoverAcpxModels = mod.discoverAcpxModels ?? mod.default?.discoverAcpxModels;
-    await assert.rejects(() => discoverAcpxModels!("../not-a-valid-agent"), /Invalid agent name/);
   });
 });

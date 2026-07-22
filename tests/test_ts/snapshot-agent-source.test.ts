@@ -12,11 +12,8 @@ import { SessionStore } from "../../src/sessions.js";
  * registered but empty).
  *
  * `modelRuntime` and `snapshotAgentSource` are private; this file reaches
- * past that via `as any` rather than spinning up the real SDK/extensions
- * (see session-store-integration.test.ts for the hermetic, real-SDK path) —
- * a minimal duck-typed `{ getProvider }` stand-in is enough since
- * snapshotAgentSource only ever calls `modelRuntime.getProvider(id)` and
- * `provider.getModels()`.
+ * past that via `as any` with a duck-typed `{ getProvider }` stand-in —
+ * never spins up the real SDK/extensions. Same pattern as session-store.test.ts.
  */
 describe("SessionStore.snapshotAgentSource", () => {
   it("prefers the live ModelRuntime provider catalog when it has models (modelRuntime branch)", async () => {
