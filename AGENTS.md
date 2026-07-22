@@ -220,7 +220,9 @@ Override the extension path with `SIDECAR_CLI_PROVIDER_EXTENSION_PATH` (discover
 
 ### 6. Resource loading via `cwd` and `agent_dir`
 
-The Pi SDK's `DefaultResourceLoader` loads project-level resources from `{cwd}/.pi/` (skills, prompts, extensions, themes) and `AGENTS.md` from `{cwd}/`. Callers control this by setting `cwd` in `POST /sessions`. The optional `agent_dir` parameter provides a global agent directory for user-level resources; it defaults to `/tmp/pi-sidecar-agent` when omitted. Validation requires `agent_dir` to be an absolute path pointing to an existing directory. In `DEV_MODE`, `agent_dir` is type-checked but path validation is skipped and the value is discarded with a warning log, preventing remote callers from steering resource loading.
+The Pi SDK's `DefaultResourceLoader` loads project-level resources from `{cwd}/.pi/` (skills, prompts, extensions, themes) and `AGENTS.md` from `{cwd}/`. Callers control this by setting `cwd` in `POST /sessions`. The optional `agent_dir` parameter provides a **per-session** user-level resource directory for that loader (skills, prompts, `{agentDir}/agents/` for subagent discovery); it defaults to `/tmp/pi-sidecar-agent` when omitted. Validation requires `agent_dir` to be an absolute path pointing to an existing directory. In `DEV_MODE`, `agent_dir` is type-checked but path validation is skipped and the value is discarded with a warning log, preventing remote callers from steering resource loading.
+
+`agent_dir` does **not** reconfigure the process-wide internal registrar runtime or shared `ModelRuntime` (ACPX/CLI provider registration). That runtime always uses a fixed `INTERNAL_AGENT_DIR` (`/tmp/pi-sidecar-agent`) because ACPX/CLI extensions hold module-level state that must load once per process (see Key Design Decision 11).
 
 ### 7. Subagent tool loaded as an SDK extension
 

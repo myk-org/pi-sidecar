@@ -827,8 +827,15 @@ export class SessionStore {
     // from {cwd}/.pi/ — including skills, prompts, extensions, and themes.
     // It also loads AGENTS.md from {cwd}/ root as project agent instructions.
     // Callers control resource loading by setting `cwd` to a directory containing these files.
-    // The agentDir controls global resources (user-level skills, extensions, auth, models).
+    // agent_dir here is per-session ResourceLoader state only (user-level skills/prompts/
+    // agents). It does not reconfigure the shared internal registrar / ModelRuntime
+    // (those always use INTERNAL_AGENT_DIR — see ensureInternalRuntime / AGENTS.md §6).
     const agentDir = options.agentDir ?? "/tmp/pi-sidecar-agent";
+    if (agentDir !== INTERNAL_AGENT_DIR) {
+      logger.debug(
+        `[sidecar] SESSION_AGENT_DIR: session=${id}, agentDir=${agentDir}, note=per_session_resources_only_shared_runtime_uses_${INTERNAL_AGENT_DIR}`,
+      );
+    }
     const loader = new DefaultResourceLoader({
       cwd: options.cwd,
       agentDir,
