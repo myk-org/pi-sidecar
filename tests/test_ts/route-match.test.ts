@@ -122,4 +122,8 @@ describe("sanitizeForLog", () => {
     assert.equal(sanitizeForLog("a\nb"), "a\\x0ab");
     assert.equal(sanitizeForLog("a\rb"), "a\\x0db");
   });
+
+  it("escapes comma and equals so key=value log fields cannot be forged", () => {
+    assert.equal(sanitizeForLog("a,b=c"), "a\\x2cb\\x3dc");
+  });
 });

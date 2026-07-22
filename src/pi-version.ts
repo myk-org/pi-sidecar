@@ -58,6 +58,16 @@ export function getInstalledPiVersion(): string | null {
 }
 
 /**
+ * Extract a semver-ish token from `pi --version` output, preserving any
+ * prerelease/build suffix (e.g. `0.81.1-beta.1`). Callers must treat suffixes
+ * as below-floor via parseVersion()'s fail-closed rules.
+ */
+export function extractPiVersionToken(text: string): string | null {
+  const m = /(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)/.exec(text);
+  return m ? m[1] : null;
+}
+
+/**
  * Best-effort check of the `pi` binary on PATH, used only as an advisory
  * warning — the subagent extension spawns this binary as a subprocess
  * (see AGENTS.md §8), so a stale global `pi` can break subagent calls even
@@ -67,8 +77,7 @@ function getPathPiVersion(): string | null {
   try {
     const result = spawnSync("pi", ["--version"], { encoding: "utf8", timeout: 5000 });
     if (result.status === 0 && result.stdout) {
-      const m = /(\d+\.\d+\.\d+)/.exec(result.stdout);
-      return m ? m[1] : null;
+      return extractPiVersionToken(result.stdout);
     }
   } catch (err) {
     logger.debug(`[sidecar] PI_PATH_VERSION_CHECK_FAILED: reason=spawn_error`, err);
@@ -105,7 +114,9 @@ export function assertPiVersionFloor(): void {
   logger.info(`[sidecar] PI_VERSION_CHECK_OK: installed=${installed}, min_version=${MIN_PI_VERSION}`);
 
   const pathVersion = getPathPiVersion();
-  if (pathVersion && compareVersions(pathVersion, MIN_PI_VERSION) < 0) {
+  // Match installed-SDK policy: prerelease/build suffixes are unparsable and
+  // must not silently satisfy the floor (PATH `pi` is what subagents spawn).
+  if (pathVersion && (!parseVersion(pathVersion) || compareVersions(pathVersion, MIN_PI_VERSION) < 0)) {
     logger.warn(`[sidecar] PI_PATH_VERSION_BELOW_FLOOR: path_version=${pathVersion}, min_version=${MIN_PI_VERSION}, reason=subagent_subprocess_may_fail`);
   }
 }

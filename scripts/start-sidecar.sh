@@ -78,9 +78,13 @@ pid_on_port() {
 
 wait_for_health() {
     local elapsed=0
+    # Bound each probe so a hung TCP/connect cannot stall past HEALTH_TIMEOUT.
+    local curl_connect_timeout=2
+    local curl_max_time=5
     echo "Waiting for sidecar health check (up to ${HEALTH_TIMEOUT}s)…"
     while (( elapsed < HEALTH_TIMEOUT )); do
-        if curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
+        if curl -sf --connect-timeout "${curl_connect_timeout}" --max-time "${curl_max_time}" \
+            "${HEALTH_URL}" >/dev/null 2>&1; then
             echo "Health check passed after ${elapsed}s."
             return 0
         fi

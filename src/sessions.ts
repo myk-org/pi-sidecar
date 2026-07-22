@@ -326,7 +326,8 @@ export interface ProviderStatus {
   registered: boolean;
   modelCount: number;
   authStatus: ReturnType<ModelRuntime["getProviderAuthStatus"]> | null;
-  authCheck: Awaited<ReturnType<ModelRuntime["checkAuth"]>> | null;
+  /** Always null or AuthCheck — never undefined (checkAuth's undefined is normalized via ?? null). */
+  authCheck: NonNullable<Awaited<ReturnType<ModelRuntime["checkAuth"]>>> | null;
 }
 
 export class SessionStore {

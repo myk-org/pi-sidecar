@@ -95,9 +95,16 @@ export function routeMatch(url: string, pattern: string): Record<string, string>
   return params;
 }
 
-/** Escape ASCII control characters so route params / ids are safe in single-line logs. */
+/**
+ * Escape values for single-line `[sidecar] ACTION: key=value, …` logs.
+ * Controls, commas, and equals must not appear unescaped — otherwise decoded
+ * route params can forge/blur structured fields.
+ */
 export function sanitizeForLog(value: string): string {
-  return value.replace(/[\0-\x1f\x7f]/g, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
+  return value
+    .replace(/[\0-\x1f\x7f]/g, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`)
+    .replace(/,/g, "\\x2c")
+    .replace(/=/g, "\\x3d");
 }
 
 /**
@@ -121,8 +128,8 @@ export function isLoopbackBindHost(host: string): boolean {
  * (string); strips source/label. Loopback responses pass through.
  */
 export function redactProviderStatusAuth<T extends {
-  authStatus: { configured: boolean; source?: string; label?: string } | null;
-  authCheck: { type: string; source?: string } | null;
+  authStatus: { configured: boolean; source?: string; label?: string } | null | undefined;
+  authCheck: { type: string; source?: string } | null | undefined;
 }>(status: T, bindHost: string): T {
   if (isLoopbackBindHost(bindHost)) return status;
   return {
@@ -133,7 +140,7 @@ export function redactProviderStatusAuth<T extends {
     authCheck: status.authCheck == null
       ? null
       : { type: status.authCheck.type },
-  };
+  } as T;
 }
 
 export interface SidecarHandle {

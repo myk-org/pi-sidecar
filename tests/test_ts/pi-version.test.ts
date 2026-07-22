@@ -5,6 +5,7 @@ import {
   MIN_PI_VERSION,
   assertPiVersionFloor,
   compareVersions,
+  extractPiVersionToken,
   getInstalledPiVersion,
 } from "../../src/pi-version.js";
 
@@ -48,6 +49,18 @@ describe("getInstalledPiVersion", () => {
     const version = getInstalledPiVersion();
     assert.ok(version, "should resolve a version string");
     assert.match(version!, /^\d+\.\d+\.\d+/);
+  });
+});
+
+describe("extractPiVersionToken", () => {
+  it("preserves prerelease and build suffixes from pi --version output", () => {
+    assert.equal(extractPiVersionToken("pi 0.81.1-beta.1"), "0.81.1-beta.1");
+    assert.equal(extractPiVersionToken("0.81.1+build.9"), "0.81.1+build.9");
+    assert.equal(extractPiVersionToken("version: 0.81.1"), "0.81.1");
+  });
+
+  it("returns null when no semver token is present", () => {
+    assert.equal(extractPiVersionToken("not a version"), null);
   });
 });
 
