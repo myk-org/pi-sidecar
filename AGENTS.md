@@ -13,6 +13,18 @@ The repo ships **two packages**:
 
 Requires `@earendil-works/pi-coding-agent` ≥ 0.81.1 (see `src/pi-version.ts` — enforced at startup via `assertPiVersionFloor()`).
 
+### Live e2e (only when the user explicitly asks)
+
+Do **not** run live e2e unless the user asks. They are excluded from default pytest and tox (`-m "not e2e"`).
+
+When asked to run them:
+
+```bash
+uv run --group tests pytest -m e2e -n auto
+```
+
+(`-n auto` = pytest-xdist; one shared sidecar, parallel cases — faster than serial.)
+
 ---
 
 ## Repository Structure
@@ -49,9 +61,13 @@ pi-sidecar/                        (repo root = npm package root)
 │   │   ├── subagent-integration.test.ts # Subagent extension resolution and env var override tests
 │   │   ├── tools-config.test.ts   # DEFAULT_TOOLS, tools config, and agent_dir validation tests
 │   │   └── watchdog.test.ts       # Health check watchdog tests
-│   └── test_python/                # Python client tests
-│       ├── conftest.py            # Shared test fixtures
-│       └── test_sidecar_client.py # Client unit tests
+│   ├── test_python/                # Python client unit tests
+│   │   ├── conftest.py            # Shared unit fixtures
+│   │   └── test_sidecar_client.py # Client unit tests
+│   └── e2e/                        # Live e2e (opt-in only; never default/tox — see “Live e2e” below)
+│       ├── conftest.py            # Sidecar lifecycle + working_models fixtures
+│       ├── test_live_battery.py   # Live HTTP tests via pi_sidecar_client
+│       └── README.md              # How to run on demand
 ├── pi_sidecar_client/              # Python client library
 │   └── __init__.py                 # SidecarClient (incl. get_model_provider_status), AIResult, call_ai, call_ai_once, list_models
 ├── examples/

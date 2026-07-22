@@ -119,11 +119,13 @@ def _map_provider_model(provider: str, model: str) -> tuple[str, str]:
 class SidecarClient:
     """HTTP client for the Pi SDK sidecar service."""
 
-    def __init__(self, base_url: str = SIDECAR_URL):
-        self._base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=600.0)
+    def __init__(self, base_url: str | None = None, *, verify: bool | str = True):
+        # Resolve at call time so mutating SIDECAR_URL / SIDECAR_URL env after import works
+        # (default-arg binding would freeze the import-time value).
+        self._base_url = (base_url if base_url is not None else SIDECAR_URL).rstrip("/")
+        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=600.0, verify=verify)
         self._closed = False
-        logger.debug("SidecarClient created: url=%s, timeout=600s", self._base_url)
+        logger.debug("SidecarClient created: url=%s, timeout=600s, verify=%s", self._base_url, verify)
 
     async def health(self) -> dict:
         """Check sidecar health."""
@@ -338,7 +340,7 @@ def get_sidecar_client() -> SidecarClient:
     """Get the singleton sidecar client."""
     global _client
     if _client is None or _client._closed:
-        _client = SidecarClient()
+        _client = SidecarClient(base_url=SIDECAR_URL)
         logger.debug("Created new sidecar client: url=%s", _client._base_url)
     return _client
 

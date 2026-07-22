@@ -2,20 +2,20 @@ skipsdist = true
 envlist = ["python", "typescript", "python_package"]
 
 [env.python]
-description = "Run Python client tests"
+description = "Run Python client unit tests (e2e excluded)"
 commands = [
   [
     "uv",
     "run",
-    "--with", "httpx",
-    "--with", "python-simple-logger",
-    "--with", "pytest",
-    "--with", "pytest-asyncio",
-    "--with", "pytest-xdist",
+    "--group",
+    "tests",
     "pytest",
     "tests/test_python/",
     "-v",
-    "-n", "auto",
+    "-n",
+    "auto",
+    "-m",
+    "not e2e",
   ],
 ]
 allowlist_externals = ["uv"]
@@ -23,18 +23,7 @@ skip_install = true
 
 [env.typescript]
 description = "Run TypeScript sidecar tests"
-commands = [
-  [
-    "npm",
-    "ci",
-    "--no-audit",
-    "--no-fund",
-  ],
-  [
-    "npm",
-    "test",
-  ],
-]
+commands = [["npm", "ci", "--no-audit", "--no-fund"], ["npm", "test"]]
 allowlist_externals = ["npm"]
 skip_install = true
 
@@ -44,7 +33,8 @@ commands = [
   [
     "uv",
     "run",
-    "--with-editable", ".",
+    "--with-editable",
+    ".",
     "python",
     "-c",
     "import pi_sidecar_client",
