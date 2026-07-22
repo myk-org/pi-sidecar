@@ -1152,16 +1152,25 @@ export class SessionStore {
     let count = 0;
     for (const [id, entry] of this.sessions) {
       logger.log(`[sidecar] SESSION_DISPOSE: session=${id}`);
-      entry.session.dispose();
+      try {
+        entry.session.dispose();
+      } catch (err) {
+        logger.warn(`[sidecar] SESSION_DISPOSE_FAILED: session=${id}`, err);
+      }
       count++;
     }
     this.sessions.clear();
     logger.info(`[sidecar] SESSIONS_DISPOSED: count=${count}`);
 
     if (this.internalRuntime) {
-      await this.internalRuntime.dispose();
+      try {
+        await this.internalRuntime.dispose();
+        logger.info(`[sidecar] INTERNAL_RUNTIME_DISPOSED: ok=true`);
+      } catch (err) {
+        // Best-effort: clear refs even if dispose throws so shutdown can finish.
+        logger.error(`[sidecar] INTERNAL_RUNTIME_DISPOSE_FAILED:`, err);
+      }
       this.internalRuntime = undefined;
-      logger.info(`[sidecar] INTERNAL_RUNTIME_DISPOSED: ok=true`);
     }
     this.modelRuntime = undefined;
     this.modelRegistry = undefined;

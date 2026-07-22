@@ -273,13 +273,17 @@ export function startSidecar(options?: { port?: number; host?: string; watchdogU
           }),
         ]);
         await waitForIdleRequests(SHUTDOWN_DRAIN_TIMEOUT_MS);
-        await store.disposeAll();
+        try {
+          await store.disposeAll();
+        } catch (err) {
+          // Once draining=true, do not abort mid-shutdown or reset shutdownPromise —
+          // that would leave requests permanently rejected with teardown incomplete.
+          logger.error(`[sidecar] SHUTDOWN_DISPOSE_FAILED: reason=${reason}`, err);
+        }
         logger.info(`[sidecar] SHUTDOWN_COMPLETE: reason=${reason}`);
       } catch (err) {
-        // Allow a later shutdown attempt to retry teardown if dispose failed.
-        shutdownPromise = undefined;
         logger.error(`[sidecar] SHUTDOWN_FAILED: reason=${reason}`, err);
-        throw err;
+        // Still complete the memoized promise so joiners do not hang; draining stays true.
       }
     })();
     return shutdownPromise;
