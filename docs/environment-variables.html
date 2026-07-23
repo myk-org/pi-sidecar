@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quickstart - pi-sidecar</title>
+    <title>Environment Variables - pi-sidecar</title>
     <meta name="description" content="Add AI coding agents to any application via a lightweight REST service and async Python client.">
     <link rel="stylesheet" href="assets/style.css">
     <script>try{var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
@@ -30,7 +30,7 @@
                     
                     <li>
                         <a href="quickstart.html"
-                           class="nav-link active" aria-current="page">
+                           class="nav-link">
                             Quickstart
                         </a>
                     </li>
@@ -114,7 +114,7 @@
                     
                     <li>
                         <a href="environment-variables.html"
-                           class="nav-link">
+                           class="nav-link active" aria-current="page">
                             Environment Variables
                         </a>
                     </li>
@@ -182,121 +182,292 @@
                          converted to HTML server-side by the markdown library, not
                          user-supplied input. XSS risk is minimal and accepted since
                          the AI generates the content, not end users. -->
-                    <h1 id="quickstart">Quickstart</h1>
-<p>Start the sidecar server and make your first AI call using the Python client in under a minute.</p>
-<h2 id="prerequisites">Prerequisites</h2>
-<ul>
-<li>Node.js 22.19 or higher.</li>
-<li>Python 3.10 or higher.</li>
-<li>The <code>@earendil-works/pi-coding-agent</code> SDK (≥ 0.81.1) installed in your Node environment.</li>
-<li>Access to an AI provider (e.g., API keys configured in your environment or a local agent).</li>
-</ul>
-<h2 id="quick-example">Quick Example</h2>
-<p>First, start the sidecar in the background:</p>
-<div class="highlight"><pre><span></span><code>./scripts/start-sidecar.sh
+                    <h1 id="environment-variables">Environment Variables</h1>
+<p>This reference documents all environment variables used to configure the pi-sidecar HTTP server, model discovery rules, and extension loading behavior.</p>
+<h2 id="core-configuration">Core Configuration</h2>
+<p>These variables control the network binding, operational mode, and observability of the sidecar.</p>
+<h3 id="pi_sidecar_log_level"><code>PI_SIDECAR_LOG_LEVEL</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (<code>error</code>, <code>warn</code>, <code>info</code>, <code>debug</code>)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>info</code></td>
+</tr>
+</tbody>
+</table>
+<p>Controls the verbosity of logs emitted by the sidecar server and the Python client. Use <code>debug</code> for request tracing and internal model resolution details.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">PI_SIDECAR_LOG_LEVEL</span><span class="o">=</span>debug
 </code></pre></div>
 
-<p>Then, use the Python client to send a prompt to the AI:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
-
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
-        <span class="s2">&quot;What are the three laws of robotics?&quot;</span><span class="p">,</span>
-        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
-        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
-        <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;You are a helpful assistant. Be concise.&quot;</span>
-    <span class="p">)</span>
-
-    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Tokens: in=</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">input_tokens</span><span class="si">}</span><span class="s2"> out=</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">output_tokens</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<h3 id="sidecar_port"><code>SIDECAR_PORT</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>Number</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>9100</code></td>
+</tr>
+</tbody>
+</table>
+<p>The TCP port on which the sidecar HTTP server will listen. </p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_PORT</span><span class="o">=</span><span class="m">9105</span>
 </code></pre></div>
 
-<h2 id="step-by-step">Step-by-Step</h2>
-<h3 id="1-start-the-sidecar-server">1. Start the Sidecar Server</h3>
-<p>The sidecar runs as a background HTTP service and binds to <code>127.0.0.1:9201</code> by default. It manages session lifecycles, model discovery, and tool execution.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># From the repository root</span>
-./scripts/start-sidecar.sh
+<h3 id="sidecar_host"><code>SIDECAR_HOST</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>127.0.0.1</code></td>
+</tr>
+</tbody>
+</table>
+<p>The hostname or IP address the sidecar HTTP server binds to. By default, it restricts connections to localhost. See <a href="server-deployment-scenarios.html">Server Deployment Scenarios</a> for details on network boundaries.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_HOST</span><span class="o">=</span><span class="m">0</span>.0.0.0
 </code></pre></div>
 
-<p>You should see output indicating the sidecar is running, along with its Process ID (PID) and log file location.</p>
+<h3 id="dev_mode"><code>DEV_MODE</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (<code>true</code>, <code>false</code>)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><code>false</code></td>
+</tr>
+</tbody>
+</table>
+<p>When set to <code>true</code>, forces the sidecar to bind to <code>0.0.0.0</code> (unless overridden by <code>SIDECAR_HOST</code>). It also downgrades invalid <code>agent_dir</code> parameters on non-loopback requests from a hard HTTP 400 error to a warning, ignoring the invalid value.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">DEV_MODE</span><span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+
+<h3 id="sidecar_watchdog_url"><code>SIDECAR_WATCHDOG_URL</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (HTTP/HTTPS URL)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><em>(None)</em></td>
+</tr>
+</tbody>
+</table>
+<p>Opt-in URL for the health-check watchdog. The sidecar will periodically poll this URL. If it fails 6 consecutive times, the sidecar gracefully shuts down. </p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_WATCHDOG_URL</span><span class="o">=</span><span class="s2">&quot;http://localhost:8000/health&quot;</span>
+</code></pre></div>
+
+<h2 id="agent-discovery">Agent Discovery</h2>
+<p>These variables configure which external model providers are scanned and loaded into the shared runtime during startup.</p>
 <blockquote>
-<p><strong>Note:</strong> See <a href="environment-variables.html">Environment Variables</a> if you need to customize the port or bind host.</p>
+<p><strong>Note:</strong> Models discovered through these mechanisms populate the list returned by the sidecar. See <a href="configuring-providers.html">Configuring Model Providers</a> for usage.</p>
 </blockquote>
-<h3 id="2-install-the-python-client">2. Install the Python Client</h3>
-<p>Install the async client package into your Python environment. You can use pip or your preferred package manager.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Install from the local repository directory</span>
-pip<span class="w"> </span>install<span class="w"> </span>./pi_sidecar_client
+<h3 id="acpx_agents"><code>ACPX_AGENTS</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>Comma-separated String</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><em>(None)</em></td>
+</tr>
+</tbody>
+</table>
+<p>A list of agents to load via the <code>acpx/runtime</code> library. Discovered models appear under the <code>acpx-&lt;agent&gt;</code> provider namespace.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">ACPX_AGENTS</span><span class="o">=</span><span class="s2">&quot;cursor&quot;</span>
 </code></pre></div>
 
-<h3 id="3-make-your-first-call">3. Make Your First Call</h3>
-<p>The <code>call_ai_once</code> function is the simplest way to interact with the sidecar. It automatically handles creating an HTTP session, sending your prompt, waiting for the AI response, and cleaning up the session when finished.</p>
-<p>Create a file named <code>hello.py</code> and add the following code:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
-
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
-        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Write a Python function to reverse a string.&quot;</span><span class="p">,</span>
-        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>  <span class="c1"># Or your configured provider</span>
-        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span>
-    <span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
-
-<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<h3 id="cli_agents"><code>CLI_AGENTS</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>Comma-separated String</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td><em>(None)</em></td>
+</tr>
+</tbody>
+</table>
+<p>A list of CLI-based agents to load. Discovered models appear under the <code>cli-&lt;agent&gt;</code> provider namespace.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">CLI_AGENTS</span><span class="o">=</span><span class="s2">&quot;cursor,claude,gemini&quot;</span>
 </code></pre></div>
 
-<p>Run the script:</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>hello.py
+<h2 id="extension-path-overrides">Extension Path Overrides</h2>
+<p>The sidecar dynamically resolves extension paths for providers and tools via standard module resolution. Use these overrides if your environment requires loading extensions from non-standard locations. </p>
+<blockquote>
+<p><strong>Tip:</strong> Path overrides are absolute paths pointing directly to the entry <code>.ts</code> or <code>.js</code> file for the given extension.</p>
+</blockquote>
+<h3 id="sidecar_acpx_extension_path"><code>SIDECAR_ACPX_EXTENSION_PATH</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (Absolute Path)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Resolved dynamically</td>
+</tr>
+</tbody>
+</table>
+<p>Overrides the default resolution path for the ACPX provider extension used to handle models specified in <code>ACPX_AGENTS</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_ACPX_EXTENSION_PATH</span><span class="o">=</span><span class="s2">&quot;/opt/extensions/acpx/index.ts&quot;</span>
 </code></pre></div>
 
-<h2 id="advanced-usage">Advanced Usage</h2>
-<h3 id="running-in-the-foreground">Running in the Foreground</h3>
-<p>If you are developing or debugging, you may want to run the sidecar in the foreground to see real-time logs in your terminal.</p>
-<div class="highlight"><pre><span></span><code>./scripts/start-sidecar.sh<span class="w"> </span>--foreground
+<h3 id="sidecar_cli_provider_extension_path"><code>SIDECAR_CLI_PROVIDER_EXTENSION_PATH</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (Absolute Path)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Resolved dynamically</td>
+</tr>
+</tbody>
+</table>
+<p>Overrides the standard path for the CLI provider extension used to handle models specified in <code>CLI_AGENTS</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_CLI_PROVIDER_EXTENSION_PATH</span><span class="o">=</span><span class="s2">&quot;/custom/path/cli-provider/index.ts&quot;</span>
 </code></pre></div>
 
-<p>Press <code>Ctrl+C</code> to stop the server when running in the foreground.</p>
-<h3 id="stopping-the-background-server">Stopping the Background Server</h3>
-<p>When you are finished using the background sidecar, you can cleanly stop it using the <code>--stop</code> flag:</p>
-<div class="highlight"><pre><span></span><code>./scripts/start-sidecar.sh<span class="w"> </span>--stop
+<h3 id="sidecar_vertex_extension_path"><code>SIDECAR_VERTEX_EXTENSION_PATH</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (Absolute Path)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Resolved dynamically</td>
+</tr>
+</tbody>
+</table>
+<p>Overrides the standard path to the Google Vertex AI provider extension.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_VERTEX_EXTENSION_PATH</span><span class="o">=</span><span class="s2">&quot;/var/pi/extensions/vertex/index.ts&quot;</span>
 </code></pre></div>
 
-<h3 id="next-steps">Next Steps</h3>
-<ul>
-<li>For more complex orchestration workflows like chaining multiple turns in a stateful conversation, see <a href="managing-conversations.html">Managing AI Conversations</a>.</li>
-<li>To equip the AI with tools to read the filesystem or hit REST APIs, see <a href="extending-with-tools.html">Extending Capabilities with Tools</a>.</li>
-<li>For parallel execution and robust error handling patterns, check out <a href="python-integration-patterns.html">Python Integration Patterns</a>.</li>
-</ul>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<ul>
-<li><strong>Address in use:</strong> If the server fails to start because port 9201 is already in use, you can either stop the existing instance (<code>./scripts/start-sidecar.sh --stop</code>) or start a new one on a different port by prefixing the command with <code>SIDECAR_PORT=9202</code>.</li>
-<li><strong>SDK version errors:</strong> The sidecar strictly requires <code>@earendil-works/pi-coding-agent</code> version <code>0.81.1</code> or higher. Ensure your Node dependencies are up to date.</li>
-<li><strong>Provider errors:</strong> If your chosen AI provider isn't returning models or accepting prompts, see <a href="configuring-providers.html">Configuring Model Providers</a> to ensure it is registered and authenticated correctly.</li>
-<li><strong>Check the logs:</strong> If something goes wrong with a background sidecar, view the logs at <code>/tmp/pi-work/pi-sidecar/sidecar.log</code> for full error stack traces.</li>
-</ul>
+<h3 id="sidecar_subagent_extension_path"><code>SIDECAR_SUBAGENT_EXTENSION_PATH</code></h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Type</strong></td>
+<td>String (Absolute Path)</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>Resolved dynamically</td>
+</tr>
+</tbody>
+</table>
+<p>Overrides the resolution path for the subagent tool extension. See <a href="orchestrating-subagents.html">Orchestrating Subagents</a> for more about subagent behaviors.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">SIDECAR_SUBAGENT_EXTENSION_PATH</span><span class="o">=</span><span class="s2">&quot;/usr/local/lib/subagent.ts&quot;</span>
+</code></pre></div>
+
 <h2 id="related-pages">Related Pages</h2>
 <ul>
-<li><a href="managing-conversations.html">Managing AI Conversations</a></li>
-<li><a href="python-integration-patterns.html">Python Integration Patterns</a></li>
 <li><a href="configuring-providers.html">Configuring Model Providers</a></li>
+<li><a href="server-deployment-scenarios.html">Server Deployment Scenarios</a></li>
+<li><a href="runtime-architecture.html">Runtime Architecture</a></li>
 </ul>
                 </div>
             </article>
             <nav class="page-nav">
                 
-                <div></div>
+                <a href="python-client.html" class="page-nav-link page-nav-prev">
+                    <span class="page-nav-label">Previous</span>
+                    <span class="page-nav-title">Python Client Reference</span>
+                </a>
                 
                 
-                <a href="managing-conversations.html" class="page-nav-link page-nav-next">
+                <a href="runtime-architecture.html" class="page-nav-link page-nav-next">
                     <span class="page-nav-label">Next</span>
-                    <span class="page-nav-title">Managing AI Conversations</span>
+                    <span class="page-nav-title">Runtime Architecture</span>
                 </a>
                 
             </nav>
@@ -306,21 +477,26 @@ pip<span class="w"> </span>install<span class="w"> </span>./pi_sidecar_client
                     <h3>On this page</h3>
                     <div class="toc">
 <ul>
-<li><a href="#prerequisites">Prerequisites</a></li>
-<li><a href="#quick-example">Quick Example</a></li>
-<li><a href="#step-by-step">Step-by-Step</a><ul>
-<li><a href="#1-start-the-sidecar-server">1. Start the Sidecar Server</a></li>
-<li><a href="#2-install-the-python-client">2. Install the Python Client</a></li>
-<li><a href="#3-make-your-first-call">3. Make Your First Call</a></li>
+<li><a href="#core-configuration">Core Configuration</a><ul>
+<li><a href="#pi_sidecar_log_level">PI_SIDECAR_LOG_LEVEL</a></li>
+<li><a href="#sidecar_port">SIDECAR_PORT</a></li>
+<li><a href="#sidecar_host">SIDECAR_HOST</a></li>
+<li><a href="#dev_mode">DEV_MODE</a></li>
+<li><a href="#sidecar_watchdog_url">SIDECAR_WATCHDOG_URL</a></li>
 </ul>
 </li>
-<li><a href="#advanced-usage">Advanced Usage</a><ul>
-<li><a href="#running-in-the-foreground">Running in the Foreground</a></li>
-<li><a href="#stopping-the-background-server">Stopping the Background Server</a></li>
-<li><a href="#next-steps">Next Steps</a></li>
+<li><a href="#agent-discovery">Agent Discovery</a><ul>
+<li><a href="#acpx_agents">ACPX_AGENTS</a></li>
+<li><a href="#cli_agents">CLI_AGENTS</a></li>
 </ul>
 </li>
-<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-path-overrides">Extension Path Overrides</a><ul>
+<li><a href="#sidecar_acpx_extension_path">SIDECAR_ACPX_EXTENSION_PATH</a></li>
+<li><a href="#sidecar_cli_provider_extension_path">SIDECAR_CLI_PROVIDER_EXTENSION_PATH</a></li>
+<li><a href="#sidecar_vertex_extension_path">SIDECAR_VERTEX_EXTENSION_PATH</a></li>
+<li><a href="#sidecar_subagent_extension_path">SIDECAR_SUBAGENT_EXTENSION_PATH</a></li>
+</ul>
+</li>
 <li><a href="#related-pages">Related Pages</a></li>
 </ul>
 </div>

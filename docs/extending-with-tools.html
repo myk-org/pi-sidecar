@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quickstart - pi-sidecar</title>
+    <title>Extending Capabilities with Tools - pi-sidecar</title>
     <meta name="description" content="Add AI coding agents to any application via a lightweight REST service and async Python client.">
     <link rel="stylesheet" href="assets/style.css">
     <script>try{var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
@@ -30,7 +30,7 @@
                     
                     <li>
                         <a href="quickstart.html"
-                           class="nav-link active" aria-current="page">
+                           class="nav-link">
                             Quickstart
                         </a>
                     </li>
@@ -58,7 +58,7 @@
                     
                     <li>
                         <a href="extending-with-tools.html"
-                           class="nav-link">
+                           class="nav-link active" aria-current="page">
                             Extending Capabilities with Tools
                         </a>
                     </li>
@@ -182,121 +182,138 @@
                          converted to HTML server-side by the markdown library, not
                          user-supplied input. XSS risk is minimal and accepted since
                          the AI generates the content, not end users. -->
-                    <h1 id="quickstart">Quickstart</h1>
-<p>Start the sidecar server and make your first AI call using the Python client in under a minute.</p>
+                    <h1 id="extending-capabilities-with-tools">Extending Capabilities with Tools</h1>
+<p>Provide the AI with the ability to interact with your local filesystem, execute commands, or securely call external APIs. By default, sessions start with a standard set of filesystem tools, but you can override these or inject your own custom REST API tools without writing any server-side execution code.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
-<li>Node.js 22.19 or higher.</li>
-<li>Python 3.10 or higher.</li>
-<li>The <code>@earendil-works/pi-coding-agent</code> SDK (≥ 0.81.1) installed in your Node environment.</li>
-<li>Access to an AI provider (e.g., API keys configured in your environment or a local agent).</li>
+<li>A running <code>pi-sidecar</code> server.</li>
+<li>The Python <code>pi_sidecar_client</code> installed and configured.</li>
 </ul>
 <h2 id="quick-example">Quick Example</h2>
-<p>First, start the sidecar in the background:</p>
-<div class="highlight"><pre><span></span><code>./scripts/start-sidecar.sh
-</code></pre></div>
-
-<p>Then, use the Python client to send a prompt to the AI:</p>
+<p>When creating a session or making a single-shot AI call, you can explicitly define which tools the AI is allowed to use by providing a <code>tools</code> list. </p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
 
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
-        <span class="s2">&quot;What are the three laws of robotics?&quot;</span><span class="p">,</span>
-        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
-        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span><span class="p">,</span>
-        <span class="n">system_prompt</span><span class="o">=</span><span class="s2">&quot;You are a helpful assistant. Be concise.&quot;</span>
+        <span class="s2">&quot;Find all Python files in the tests directory and list them.&quot;</span><span class="p">,</span>
+        <span class="c1"># This overrides defaults; the AI can only use &#39;find&#39; and &#39;ls&#39;</span>
+        <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;find&quot;</span><span class="p">,</span> <span class="s2">&quot;ls&quot;</span><span class="p">]</span>
     <span class="p">)</span>
-
-    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Tokens: in=</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">input_tokens</span><span class="si">}</span><span class="s2"> out=</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">output_tokens</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
     <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </code></pre></div>
 
-<h2 id="step-by-step">Step-by-Step</h2>
-<h3 id="1-start-the-sidecar-server">1. Start the Sidecar Server</h3>
-<p>The sidecar runs as a background HTTP service and binds to <code>127.0.0.1:9201</code> by default. It manages session lifecycles, model discovery, and tool execution.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># From the repository root</span>
-./scripts/start-sidecar.sh
-</code></pre></div>
-
-<p>You should see output indicating the sidecar is running, along with its Process ID (PID) and log file location.</p>
+<h2 id="using-built-in-tools">Using Built-in Tools</h2>
+<p>By default, if you omit the <code>tools</code> parameter, the sidecar provides a standard set of capabilities (<code>read</code>, <code>grep</code>, <code>find</code>, <code>ls</code>, <code>bash</code>).</p>
+<p>To restrict the AI (for instance, to prevent it from executing arbitrary <code>bash</code> scripts), explicitly pass a <code>tools</code> list. The provided list completely replaces the defaults.</p>
+<h3 id="available-built-in-tools">Available Built-in Tools</h3>
+<ul>
+<li><code>read</code>: Read file contents.</li>
+<li><code>grep</code>: Search for text patterns inside files.</li>
+<li><code>find</code>: Search for files matching glob patterns.</li>
+<li><code>ls</code>: List directory contents.</li>
+<li><code>bash</code>: Execute shell commands.</li>
+<li><code>subagent</code>: Delegate complex tasks to specialized agents. This tool is opt-in and requires explicitly adding <code>"subagent"</code> to your <code>tools</code> list. See <a href="orchestrating-subagents.html">Orchestrating Subagents</a> for more details.</li>
+</ul>
 <blockquote>
-<p><strong>Note:</strong> See <a href="environment-variables.html">Environment Variables</a> if you need to customize the port or bind host.</p>
+<p><strong>Tip:</strong> If you provide an empty list (<code>tools=[]</code>), the AI will have no tools available.</p>
 </blockquote>
-<h3 id="2-install-the-python-client">2. Install the Python Client</h3>
-<p>Install the async client package into your Python environment. You can use pip or your preferred package manager.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Install from the local repository directory</span>
-pip<span class="w"> </span>install<span class="w"> </span>./pi_sidecar_client
-</code></pre></div>
-
-<h3 id="3-make-your-first-call">3. Make Your First Call</h3>
-<p>The <code>call_ai_once</code> function is the simplest way to interact with the sidecar. It automatically handles creating an HTTP session, sending your prompt, waiting for the AI response, and cleaning up the session when finished.</p>
-<p>Create a file named <code>hello.py</code> and add the following code:</p>
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="custom-http-tools">Custom HTTP Tools</h3>
+<p>You can integrate external REST APIs directly into the AI's toolset using the <code>custom_tools</code> list. The sidecar includes a built-in HTTP tool executor, meaning you only need to provide the schema and endpoint configuration—no custom server-side execution code is required.</p>
+<p>An HTTP tool requires a standard JSON schema defining its parameters, alongside an <code>http</code> configuration object that maps those parameters to the outgoing request.</p>
+<ol>
+<li><strong>Define the schema:</strong> Give the tool a <code>name</code>, <code>description</code>, and define expected <code>parameters</code>.</li>
+<li><strong>Define the HTTP execution:</strong> Set the <code>method</code>, <code>url</code>, and optionally <code>headers</code>, <code>query_params</code>, <code>body_template</code>, and <code>timeout_ms</code>.</li>
+<li><strong>Use placeholders:</strong> Any parameter defined in the schema can be injected into the request by wrapping its name in curly braces (e.g., <code>{city}</code>).</li>
+</ol>
+<h3 id="example-adding-a-weather-api-tool">Example: Adding a Weather API Tool</h3>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
 
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">weather_tool</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;get_weather&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Fetch the current weather for a specific city.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;city&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;The city name&quot;</span><span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;city&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;http&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;GET&quot;</span><span class="p">,</span>
+            <span class="c1"># The {city} placeholder is automatically replaced and URI-encoded</span>
+            <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://api.example.com/weather/</span><span class="si">{city}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;query_params&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;units&quot;</span><span class="p">:</span> <span class="s2">&quot;metric&quot;</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;headers&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;Accept&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;timeout_ms&quot;</span><span class="p">:</span> <span class="mi">10000</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
     <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
-        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Write a Python function to reverse a string.&quot;</span><span class="p">,</span>
-        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>  <span class="c1"># Or your configured provider</span>
-        <span class="n">ai_model</span><span class="o">=</span><span class="s2">&quot;gemini-2.5-flash&quot;</span>
+        <span class="s2">&quot;Is it raining in Seattle right now?&quot;</span><span class="p">,</span>
+        <span class="c1"># We explicitly supply &#39;read&#39; and &#39;bash&#39; along with our custom tool</span>
+        <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;read&quot;</span><span class="p">,</span> <span class="s2">&quot;bash&quot;</span><span class="p">],</span>
+        <span class="n">custom_tools</span><span class="o">=</span><span class="p">[</span><span class="n">weather_tool</span><span class="p">]</span>
     <span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
 
-<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </code></pre></div>
 
-<p>Run the script:</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>hello.py
-</code></pre></div>
-
-<h2 id="advanced-usage">Advanced Usage</h2>
-<h3 id="running-in-the-foreground">Running in the Foreground</h3>
-<p>If you are developing or debugging, you may want to run the sidecar in the foreground to see real-time logs in your terminal.</p>
-<div class="highlight"><pre><span></span><code>./scripts/start-sidecar.sh<span class="w"> </span>--foreground
-</code></pre></div>
-
-<p>Press <code>Ctrl+C</code> to stop the server when running in the foreground.</p>
-<h3 id="stopping-the-background-server">Stopping the Background Server</h3>
-<p>When you are finished using the background sidecar, you can cleanly stop it using the <code>--stop</code> flag:</p>
-<div class="highlight"><pre><span></span><code>./scripts/start-sidecar.sh<span class="w"> </span>--stop
-</code></pre></div>
-
-<h3 id="next-steps">Next Steps</h3>
+<h3 id="placeholders-and-interpolation">Placeholders and Interpolation</h3>
+<p>The HTTP tool executor supports interpolating parameters in several places:</p>
 <ul>
-<li>For more complex orchestration workflows like chaining multiple turns in a stateful conversation, see <a href="managing-conversations.html">Managing AI Conversations</a>.</li>
-<li>To equip the AI with tools to read the filesystem or hit REST APIs, see <a href="extending-with-tools.html">Extending Capabilities with Tools</a>.</li>
-<li>For parallel execution and robust error handling patterns, check out <a href="python-integration-patterns.html">Python Integration Patterns</a>.</li>
+<li><strong>URLs:</strong> Safely URI-encodes the injected value to prevent path traversal and URL injection (e.g., <code>https://api.example.com/users/{id}</code>).</li>
+<li><strong>Headers:</strong> Replaces placeholders and automatically strips any carriage returns or line feeds to prevent HTTP header injection.</li>
+<li><strong>Query Parameters:</strong> Values mapped here are appropriately encoded into the query string.</li>
+<li><strong>Body Templates:</strong> If <code>body_template</code> is an object, placeholders inside strings will be replaced. Non-string variables injected into a JSON body are properly JSON-escaped.</li>
 </ul>
+<h3 id="http-tool-security-controls">HTTP Tool Security Controls</h3>
+<p>The sidecar enforces strict security boundaries on the HTTP executor to protect your environment:</p>
+<ul>
+<li><strong>URL Schemes:</strong> Only <code>http</code> and <code>https</code> protocols are permitted.</li>
+<li><strong>Response Limits:</strong> To prevent memory exhaustion, API responses are strictly capped at 1MB.</li>
+<li><strong>Timeouts:</strong> The default request timeout is 30 seconds. You can override this per-tool using <code>timeout_ms</code>.</li>
+</ul>
+<blockquote>
+<p><strong>Warning:</strong> The sidecar does not block internal network requests by default. If your environment requires restricting access to local IP ranges or specific internal hosts, you must enforce those network policies at your infrastructure level.</p>
+</blockquote>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <ul>
-<li><strong>Address in use:</strong> If the server fails to start because port 9201 is already in use, you can either stop the existing instance (<code>./scripts/start-sidecar.sh --stop</code>) or start a new one on a different port by prefixing the command with <code>SIDECAR_PORT=9202</code>.</li>
-<li><strong>SDK version errors:</strong> The sidecar strictly requires <code>@earendil-works/pi-coding-agent</code> version <code>0.81.1</code> or higher. Ensure your Node dependencies are up to date.</li>
-<li><strong>Provider errors:</strong> If your chosen AI provider isn't returning models or accepting prompts, see <a href="configuring-providers.html">Configuring Model Providers</a> to ensure it is registered and authenticated correctly.</li>
-<li><strong>Check the logs:</strong> If something goes wrong with a background sidecar, view the logs at <code>/tmp/pi-work/pi-sidecar/sidecar.log</code> for full error stack traces.</li>
+<li><strong>Custom tool request is rejected (HTTP 400):</strong> Ensure every custom tool definition has a valid, non-empty <code>name</code> string and is passed as a flat dictionary object within the <code>custom_tools</code> list. Nested arrays or missing names will trigger a validation error.</li>
+<li><strong>Missing subagent extension:</strong> If you add <code>"subagent"</code> to your <code>tools</code> array but the sidecar fails to create the session with a 400 error, ensure the internal extension path is resolvable. See <a href="orchestrating-subagents.html">Orchestrating Subagents</a> for setup requirements.</li>
+<li><strong>HTTP Tool fails to execute:</strong> Verify the target API is accessible from the machine running the <code>pi-sidecar</code> server and responds within the timeout period. The AI will receive the error message dynamically and may attempt to explain the failure in its response.</li>
 </ul>
 <h2 id="related-pages">Related Pages</h2>
 <ul>
+<li><a href="orchestrating-subagents.html">Orchestrating Subagents</a></li>
 <li><a href="managing-conversations.html">Managing AI Conversations</a></li>
-<li><a href="python-integration-patterns.html">Python Integration Patterns</a></li>
-<li><a href="configuring-providers.html">Configuring Model Providers</a></li>
+<li><a href="rest-api.html">REST API Endpoints</a></li>
 </ul>
                 </div>
             </article>
             <nav class="page-nav">
                 
-                <div></div>
+                <a href="configuring-providers.html" class="page-nav-link page-nav-prev">
+                    <span class="page-nav-label">Previous</span>
+                    <span class="page-nav-title">Configuring Model Providers</span>
+                </a>
                 
                 
-                <a href="managing-conversations.html" class="page-nav-link page-nav-next">
+                <a href="orchestrating-subagents.html" class="page-nav-link page-nav-next">
                     <span class="page-nav-label">Next</span>
-                    <span class="page-nav-title">Managing AI Conversations</span>
+                    <span class="page-nav-title">Orchestrating Subagents</span>
                 </a>
                 
             </nav>
@@ -308,16 +325,15 @@ pip<span class="w"> </span>install<span class="w"> </span>./pi_sidecar_client
 <ul>
 <li><a href="#prerequisites">Prerequisites</a></li>
 <li><a href="#quick-example">Quick Example</a></li>
-<li><a href="#step-by-step">Step-by-Step</a><ul>
-<li><a href="#1-start-the-sidecar-server">1. Start the Sidecar Server</a></li>
-<li><a href="#2-install-the-python-client">2. Install the Python Client</a></li>
-<li><a href="#3-make-your-first-call">3. Make Your First Call</a></li>
+<li><a href="#using-built-in-tools">Using Built-in Tools</a><ul>
+<li><a href="#available-built-in-tools">Available Built-in Tools</a></li>
 </ul>
 </li>
 <li><a href="#advanced-usage">Advanced Usage</a><ul>
-<li><a href="#running-in-the-foreground">Running in the Foreground</a></li>
-<li><a href="#stopping-the-background-server">Stopping the Background Server</a></li>
-<li><a href="#next-steps">Next Steps</a></li>
+<li><a href="#custom-http-tools">Custom HTTP Tools</a></li>
+<li><a href="#example-adding-a-weather-api-tool">Example: Adding a Weather API Tool</a></li>
+<li><a href="#placeholders-and-interpolation">Placeholders and Interpolation</a></li>
+<li><a href="#http-tool-security-controls">HTTP Tool Security Controls</a></li>
 </ul>
 </li>
 <li><a href="#troubleshooting">Troubleshooting</a></li>

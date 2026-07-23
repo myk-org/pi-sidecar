@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>pi-sidecar</title>
+    <title>Runtime Architecture - pi-sidecar</title>
     <meta name="description" content="Add AI coding agents to any application via a lightweight REST service and async Python client.">
     <link rel="stylesheet" href="assets/style.css">
     <script>try{var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
@@ -128,7 +128,7 @@
                     
                     <li>
                         <a href="runtime-architecture.html"
-                           class="nav-link">
+                           class="nav-link active" aria-current="page">
                             Runtime Architecture
                         </a>
                     </li>
@@ -176,171 +176,120 @@
 
         <main class="content">
             
-            <section class="index-header">
-                <h1 class="index-title">pi-sidecar</h1>
-                <p class="index-tagline">Add AI coding agents to any application via a lightweight REST service and async Python client.</p>
+            <article class="article">
+                <div class="article-body">
+                    <!-- SECURITY: |safe is intentional. Content is AI-generated markdown
+                         converted to HTML server-side by the markdown library, not
+                         user-supplied input. XSS risk is minimal and accepted since
+                         the AI generates the content, not end users. -->
+                    <h1 id="runtime-architecture">Runtime Architecture</h1>
+<p>The Pi Sidecar is a lightweight HTTP wrapper around the Pi Coding Agent SDK, but internally it manages complex state, dynamically loaded extensions, and isolated subprocesses. Understanding the sidecar's runtime architecture helps you optimize performance, avoid state-leakage pitfalls, and debug issues with model discovery or subagent execution.</p>
+<h2 id="the-big-picture">The Big Picture</h2>
+<p>When an HTTP request arrives, it doesn't just blindly instantiate an SDK object. It navigates a layered architecture designed to keep transient user data isolated while sharing heavy provider extensions across the process.</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Scope</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>HTTP Server</strong></td>
+<td>Process</td>
+<td>Receives requests, enforces loopback-only trust boundaries, and parses JSON payloads.</td>
+</tr>
+<tr>
+<td><strong>Session Store</strong></td>
+<td>Process</td>
+<td>Manages the lifecycle of transient user sessions and routes requests to the correct runtime.</td>
+</tr>
+<tr>
+<td><strong>Internal Runtime &amp; Shared ModelRuntime</strong></td>
+<td>Process (Singleton)</td>
+<td>Loads stateful extensions (ACPX, CLI, Vertex) exactly once. Caches available models globally.</td>
+</tr>
+<tr>
+<td><strong>User Sessions</strong></td>
+<td>Transient (Per-conversation)</td>
+<td>Houses isolated conversation histories, custom tools, and session-specific resource directories.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="key-concepts">Key Concepts</h2>
+<h3 id="the-shared-internal-runtime">The Shared Internal Runtime</h3>
+<p>The sidecar relies on a singleton internal runtime. Extensions for ACPX (like Cursor) and CLI providers hold module-level state—such as maps of active agents or authenticated backend connections. If the sidecar loaded these extensions from scratch on every request, this state would be corrupted, duplicated, or race against itself. </p>
+<p>Instead, the sidecar lazily creates one internal runtime on the first request (or when the models endpoint is queried). This runtime uses a fixed internal directory and acts as the single source of truth for provider discovery.</p>
+<blockquote>
+<p><strong>Note:</strong> Do not attempt to reset provider state by simply deleting a user session. The shared ModelRuntime persists across all user sessions until the entire sidecar process shuts down.</p>
+</blockquote>
+<h3 id="module-caching-and-extension-loading">Module Caching and Extension Loading</h3>
+<p>Extensions are transpiled and loaded at runtime using an internal module loader. Because these extensions are cached in memory:</p>
+<ol>
+<li><strong>Global vs. Local State:</strong> User sessions connect to the shared <code>ModelRuntime</code> to resolve models <em>without</em> reloading extensions, keeping session startup virtually instantaneous.</li>
+<li><strong>Shutdown Sequences:</strong> When the server shuts down, an explicit <code>session_shutdown</code> event is emitted. This signals the cached ACPX/CLI extensions to cleanly flush their module-level state. A standard user session disposal does <em>not</em> trigger this flush.</li>
+</ol>
+<h3 id="subagent-process-handling">Subagent Process Handling</h3>
+<p>When a user session utilizes the <code>subagent</code> tool, the sidecar does not run the subagent in the same memory space. It delegates the task by spawning a completely isolated <code>pi --mode json</code> subprocess. </p>
+<p>The sidecar ensures this works reliably across different environments through two architectural interventions:</p>
+<ul>
+<li><strong>Subprocess Entrypoint Masking:</strong> The sidecar deliberately clears the <code>process.argv[1]</code> variable during startup. If left intact, the subagent would mistakenly try to execute the sidecar's own entry script instead of the default <code>pi</code> CLI binary.</li>
+<li><strong>PATH Filtering:</strong> The sidecar dynamically filters the <code>PATH</code> environment variable. It strips out local <code>node_modules/.bin</code> directories that might contain an older, incompatible version of the <code>pi</code> binary, ensuring the subagent executes the correct system-level agent.</li>
+</ul>
+<h2 id="how-it-affects-the-user">How it Affects the User</h2>
+<ul>
+<li><strong>Resource Paths:</strong> Because the internal runtime is a singleton, provider configurations (like ACPX and CLI models) are loaded once from a fixed system directory. However, you can still supply a custom <code>agent_dir</code> in your session requests to strictly isolate user-level prompts, custom tools, and skills per conversation.</li>
+<li><strong>Performance:</strong> Multi-turn conversations and parallel session creations are extremely fast. The heavy lifting of transpiling extensions and polling ACPX backends happens asynchronously in the shared runtime, not during your blocking HTTP request.</li>
+<li><strong>Trust Boundary:</strong> The architecture assumes a local trust model. There is no built-in authentication layer on the API because the HTTP server restricts operations to the local loopback interface by default. </li>
+</ul>
+<h2 id="related-pages">Related Pages</h2>
+<ul>
+<li>See <a href="configuring-providers.html">Configuring Model Providers</a> for details on how the shared runtime exposes ACPX and CLI models.</li>
+<li>See <a href="orchestrating-subagents.html">Orchestrating Subagents</a> for configuring the isolated subprocesses and delegating tasks.</li>
+<li>See <a href="managing-conversations.html">Managing AI Conversations</a> for handling transient user sessions and isolating resource directories.</li>
+</ul>
+<h2 id="related-pages_1">Related Pages</h2>
+<ul>
+<li><a href="server-deployment-scenarios.html">Server Deployment Scenarios</a></li>
+<li><a href="configuring-providers.html">Configuring Model Providers</a></li>
+<li><a href="orchestrating-subagents.html">Orchestrating Subagents</a></li>
+</ul>
+                </div>
+            </article>
+            <nav class="page-nav">
+                
+                <a href="environment-variables.html" class="page-nav-link page-nav-prev">
+                    <span class="page-nav-label">Previous</span>
+                    <span class="page-nav-title">Environment Variables</span>
+                </a>
                 
                 
-                  
-                    
-                  
+                <div></div>
                 
-                  
-                
-                  
-                
-                  
-                
-                  
-                
-                
-                <a href="quickstart.html" class="index-cta">Get Started →</a>
-                
-            </section>
+            </nav>
+            
+            <aside class="toc-sidebar">
+                <div class="toc-container">
+                    <h3>On this page</h3>
+                    <div class="toc">
+<ul>
+<li><a href="#the-big-picture">The Big Picture</a></li>
+<li><a href="#key-concepts">Key Concepts</a><ul>
+<li><a href="#the-shared-internal-runtime">The Shared Internal Runtime</a></li>
+<li><a href="#module-caching-and-extension-loading">Module Caching and Extension Loading</a></li>
+<li><a href="#subagent-process-handling">Subagent Process Handling</a></li>
+</ul>
+</li>
+<li><a href="#how-it-affects-the-user">How it Affects the User</a></li>
+<li><a href="#related-pages">Related Pages</a></li>
+<li><a href="#related-pages_1">Related Pages</a></li>
+</ul>
+</div>
 
-            <section class="card-grid">
-                
-                <div class="card">
-                    <h3 class="card-title">Getting Started</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="quickstart.html">Quickstart</a>
-                            
-                            <p class="card-page-desc">Start the sidecar server and make your first AI call using the Python client in under a minute.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="quickstart.html" class="card-link">Explore →</a>
-                    
                 </div>
-                
-                <div class="card">
-                    <h3 class="card-title">User Guides</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="managing-conversations.html">Managing AI Conversations</a>
-                            
-                            <p class="card-page-desc">Create stateful sessions, handle multi-turn prompts, and isolate context with agent directories.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="configuring-providers.html">Configuring Model Providers</a>
-                            
-                            <p class="card-page-desc">Discover and authenticate models from built-ins, ACPX (Cursor), and CLI providers.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="extending-with-tools.html">Extending Capabilities with Tools</a>
-                            
-                            <p class="card-page-desc">Equip the AI with built-in filesystem commands or integrate custom REST APIs via the HTTP tool executor.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="orchestrating-subagents.html">Orchestrating Subagents</a>
-                            
-                            <p class="card-page-desc">Delegate parallel or chained tasks to specialized agents using the built-in subagent extension.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="managing-conversations.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">Recipes</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="python-integration-patterns.html">Python Integration Patterns</a>
-                            
-                            <p class="card-page-desc">Drop-in code snippets for parallel execution, usage tracking, and robust async Python workflows.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="server-deployment-scenarios.html">Server Deployment Scenarios</a>
-                            
-                            <p class="card-page-desc">Configure watchdog health-checks, programmatic TypeScript startup, and secure local host bindings.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="python-integration-patterns.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">Reference</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="rest-api.html">REST API Endpoints</a>
-                            
-                            <p class="card-page-desc">Complete HTTP request and response contract for sidecar sessions and model discovery.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="python-client.html">Python Client Reference</a>
-                            
-                            <p class="card-page-desc">Public interfaces and typing for SidecarClient, AIResult, and async helper functions.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="environment-variables.html">Environment Variables</a>
-                            
-                            <p class="card-page-desc">Lookup table of all sidecar configuration options, extension path overrides, and log levels.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="rest-api.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">Internals</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="runtime-architecture.html">Runtime Architecture</a>
-                            
-                            <p class="card-page-desc">Understand the internal AgentSessionRuntime, ACPX module caching, and subagent process handling.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="runtime-architecture.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-            </section>
-
-            <div class="llm-docs-banner">
-                <div class="llm-docs-icon">🤖</div>
-                <div class="llm-docs-content">
-                    <strong>AI-friendly documentation</strong>
-                    <p>This documentation is optimized for AI consumption.</p>
-                    <div class="llm-docs-links">
-                        <a href="llms.txt">llms.txt</a> — structured index
-                        <span class="llm-docs-sep">·</span>
-                        <a href="llms-full.txt">llms-full.txt</a> — complete docs in one file
-                    </div>
-                </div>
-            </div>
+            </aside>
+            
 
         </main>
 

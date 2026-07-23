@@ -1,30 +1,29 @@
 # pi-sidecar
 
-> Call AI coding agents from Python, shell, or any language through a simple REST API
+> Add AI coding agents to any application via a lightweight REST service and async Python client.
 
 ## Getting Started
 
-- [Getting Started with pi-sidecar](quickstart.md): Install the sidecar server and Python client, start the service, and make your first AI call in under 60 seconds
+- [Quickstart](quickstart.md): Start the sidecar server and make your first AI call using the Python client in under a minute.
 
 ## User Guides
 
-- [Sending Prompts to AI Models](sending-prompts.md): Learn how to send single-shot prompts with call_ai_once and manage sessions manually for multi-turn conversations
-- [Discovering and Selecting Models](discovering-models.md): List available AI models, filter by provider, trigger model refresh, and understand provider name mapping (gemini, cursor, claude)
-- [Managing Session Lifecycle](managing-sessions.md): Create, reuse, abort, and delete sessions — understand when to use call_ai vs call_ai_once and how to handle cleanup
-- [Configuring Built-in and Custom Tools](configuring-tools.md): Override the default tool set (read, grep, find, ls, bash), add custom tools, and wire up HTTP-backed tools with parameter interpolation
-- [Running Parallel AI Calls](running-parallel-tasks.md): Execute multiple AI prompts concurrently with run_parallel_with_limit to control throughput and avoid overwhelming the sidecar
-- [Tracking Token Usage and Costs](tracking-usage.md): Register a usage recorder callback to capture token counts, costs, and timing for billing, analytics, or debugging
-- [Embedding the Sidecar in a Node.js Application](embedding-in-node.md): Start the sidecar programmatically from TypeScript/Node with custom port, host, and watchdog configuration
-- [Monitoring a Companion Backend with the Watchdog](configuring-watchdog.md): Enable the opt-in health-check watchdog to automatically shut down the sidecar when a companion backend becomes unresponsive
+- [Managing AI Conversations](managing-conversations.md): Create stateful sessions, handle multi-turn prompts, and isolate context with agent directories.
+- [Configuring Model Providers](configuring-providers.md): Discover and authenticate models from built-ins, ACPX (Cursor), and CLI providers.
+- [Extending Capabilities with Tools](extending-with-tools.md): Equip the AI with built-in filesystem commands or integrate custom REST APIs via the HTTP tool executor.
+- [Orchestrating Subagents](orchestrating-subagents.md): Delegate parallel or chained tasks to specialized agents using the built-in subagent extension.
 
 ## Recipes
 
-- [Python Client Recipes](recipes-python-client.md): Copy-paste patterns for common Python workflows: health checks, error handling, resource loading via cwd, and session cleanup
-- [REST API Recipes](recipes-rest-api.md): Copy-paste curl and HTTP examples for every sidecar endpoint: health, models, sessions, prompts, and abort
+- [Python Integration Patterns](python-integration-patterns.md): Drop-in code snippets for parallel execution, usage tracking, and robust async Python workflows.
+- [Server Deployment Scenarios](server-deployment-scenarios.md): Configure watchdog health-checks, programmatic TypeScript startup, and secure local host bindings.
 
 ## Reference
 
-- [REST API Reference](rest-api-reference.md): Complete reference for all HTTP endpoints: request/response schemas, status codes, error formats, and validation rules
-- [Python Client API Reference](python-client-reference.md): Full API reference for SidecarClient, call_ai, call_ai_once, list_models, AIResult, AITokenUsage, and all public functions
-- [Configuration and Environment Variables](configuration-reference.md): Reference for all environment variables (SIDECAR_PORT, SIDECAR_URL, DEV_MODE, PI_SIDECAR_LOG_LEVEL, ACPX_AGENTS) and startup options
-- [HTTP Tool Executor Reference](http-tool-executor-reference.md): Reference for HttpToolConfig schema, parameter interpolation syntax, security hardening (URI encoding, CRLF stripping, JSON escaping), timeouts, and response limits
+- [REST API Endpoints](rest-api.md): Complete HTTP request and response contract for sidecar sessions and model discovery.
+- [Python Client Reference](python-client.md): Public interfaces and typing for SidecarClient, AIResult, and async helper functions.
+- [Environment Variables](environment-variables.md): Lookup table of all sidecar configuration options, extension path overrides, and log levels.
+
+## Internals
+
+- [Runtime Architecture](runtime-architecture.md): Understand the internal AgentSessionRuntime, ACPX module caching, and subagent process handling.

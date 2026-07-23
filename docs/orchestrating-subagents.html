@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>pi-sidecar</title>
+    <title>Orchestrating Subagents - pi-sidecar</title>
     <meta name="description" content="Add AI coding agents to any application via a lightweight REST service and async Python client.">
     <link rel="stylesheet" href="assets/style.css">
     <script>try{var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
@@ -65,7 +65,7 @@
                     
                     <li>
                         <a href="orchestrating-subagents.html"
-                           class="nav-link">
+                           class="nav-link active" aria-current="page">
                             Orchestrating Subagents
                         </a>
                     </li>
@@ -176,171 +176,122 @@
 
         <main class="content">
             
-            <section class="index-header">
-                <h1 class="index-title">pi-sidecar</h1>
-                <p class="index-tagline">Add AI coding agents to any application via a lightweight REST service and async Python client.</p>
-                
-                
-                  
-                    
-                  
-                
-                  
-                
-                  
-                
-                  
-                
-                  
-                
-                
-                <a href="quickstart.html" class="index-cta">Get Started →</a>
-                
-            </section>
+            <article class="article">
+                <div class="article-body">
+                    <!-- SECURITY: |safe is intentional. Content is AI-generated markdown
+                         converted to HTML server-side by the markdown library, not
+                         user-supplied input. XSS risk is minimal and accepted since
+                         the AI generates the content, not end users. -->
+                    <h1 id="orchestrating-subagents">Orchestrating Subagents</h1>
+<p>Delegate parallel or chained tasks to specialized agents. This allows a primary AI session to break down complex workloads and spawn isolated subprocesses to handle specific domains automatically.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+</li>
+<li>The <code>pi_sidecar_client</code> library installed (see <a href="quickstart.html">Quickstart</a>)</li>
+<li>At least one specialized agent definition file (Markdown with YAML frontmatter)</li>
+</ul>
+<h2 id="quick-example">Quick Example</h2>
+<p>First, define a specialized agent in your agent directory (e.g., <code>/tmp/pi-sidecar-agent/agents/reviewer.md</code>):</p>
+<div class="highlight"><pre><span></span><code>---
+name: reviewer
+<span class="gu">description: Reviews code for security issues.</span>
+<span class="gu">---</span>
+<span class="gh"># Reviewer Agent</span>
+You are a strict security reviewer. Identify any vulnerabilities in the provided code snippet.
+</code></pre></div>
 
-            <section class="card-grid">
-                
-                <div class="card">
-                    <h3 class="card-title">Getting Started</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="quickstart.html">Quickstart</a>
-                            
-                            <p class="card-page-desc">Start the sidecar server and make your first AI call using the Python client in under a minute.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="quickstart.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">User Guides</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="managing-conversations.html">Managing AI Conversations</a>
-                            
-                            <p class="card-page-desc">Create stateful sessions, handle multi-turn prompts, and isolate context with agent directories.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="configuring-providers.html">Configuring Model Providers</a>
-                            
-                            <p class="card-page-desc">Discover and authenticate models from built-ins, ACPX (Cursor), and CLI providers.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="extending-with-tools.html">Extending Capabilities with Tools</a>
-                            
-                            <p class="card-page-desc">Equip the AI with built-in filesystem commands or integrate custom REST APIs via the HTTP tool executor.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="orchestrating-subagents.html">Orchestrating Subagents</a>
-                            
-                            <p class="card-page-desc">Delegate parallel or chained tasks to specialized agents using the built-in subagent extension.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="managing-conversations.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">Recipes</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="python-integration-patterns.html">Python Integration Patterns</a>
-                            
-                            <p class="card-page-desc">Drop-in code snippets for parallel execution, usage tracking, and robust async Python workflows.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="server-deployment-scenarios.html">Server Deployment Scenarios</a>
-                            
-                            <p class="card-page-desc">Configure watchdog health-checks, programmatic TypeScript startup, and secure local host bindings.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="python-integration-patterns.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">Reference</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="rest-api.html">REST API Endpoints</a>
-                            
-                            <p class="card-page-desc">Complete HTTP request and response contract for sidecar sessions and model discovery.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="python-client.html">Python Client Reference</a>
-                            
-                            <p class="card-page-desc">Public interfaces and typing for SidecarClient, AIResult, and async helper functions.</p>
-                            
-                        </li>
-                        
-                        <li>
-                            <a href="environment-variables.html">Environment Variables</a>
-                            
-                            <p class="card-page-desc">Lookup table of all sidecar configuration options, extension path overrides, and log levels.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="rest-api.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">Internals</h3>
-                    <ul class="card-pages">
-                        
-                        <li>
-                            <a href="runtime-architecture.html">Runtime Architecture</a>
-                            
-                            <p class="card-page-desc">Understand the internal AgentSessionRuntime, ACPX module caching, and subagent process handling.</p>
-                            
-                        </li>
-                        
-                    </ul>
-                    
-                    <a href="runtime-architecture.html" class="card-link">Explore →</a>
-                    
-                </div>
-                
-            </section>
+<p>Then, enable the <code>subagent</code> tool when initializing an AI call using the Python client:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pi_sidecar_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_ai_once</span>
 
-            <div class="llm-docs-banner">
-                <div class="llm-docs-icon">🤖</div>
-                <div class="llm-docs-content">
-                    <strong>AI-friendly documentation</strong>
-                    <p>This documentation is optimized for AI consumption.</p>
-                    <div class="llm-docs-links">
-                        <a href="llms.txt">llms.txt</a> — structured index
-                        <span class="llm-docs-sep">·</span>
-                        <a href="llms-full.txt">llms-full.txt</a> — complete docs in one file
-                    </div>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Ask the &#39;reviewer&#39; agent to review this code: `console.log(password)`&quot;</span><span class="p">,</span>
+        <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;subagent&quot;</span><span class="p">],</span>
+        <span class="n">agent_dir</span><span class="o">=</span><span class="s2">&quot;/tmp/pi-sidecar-agent&quot;</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<h2 id="step-by-step-guide">Step-by-Step Guide</h2>
+<ol>
+<li><strong>Define Subagents:</strong> Create Markdown files with YAML frontmatter in your global agent directory (<code>{agentDir}/agents/</code>) or your project directory (<code>{cwd}/.pi/agents/</code>). The <code>name</code> and <code>description</code> in the frontmatter help the primary agent understand what the subagent can do. (Note: Project-level agents require configuring <code>agentScope: "both"</code>).</li>
+<li><strong>Enable the Subagent Tool:</strong> When initializing an AI conversation, include <code>"subagent"</code> in the <code>tools</code> array. If the extension is unavailable, the sidecar will reject the session creation.</li>
+<li><strong>Prompt the Primary Agent:</strong> Ask your primary AI session to delegate tasks in plain text. The AI will automatically determine whether to spawn a single subagent, parallel instances, or chained subagents based on your instructions.</li>
+<li><strong>Subprocess Isolation:</strong> The sidecar automatically spawns an isolated process for each subagent, ensuring the execution context remains completely separated from the primary session.</li>
+</ol>
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="parallel-execution">Parallel Execution</h3>
+<p>The subagent tool supports spawning multiple agents simultaneously to speed up independent tasks. It can handle a maximum of 8 subagents per batch, with 4 running concurrently. </p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Ask the &#39;reviewer&#39; agent to review &#39;auth.js&#39; and the &#39;linter&#39; agent to check &#39;styles.css&#39; at the same time.&quot;</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;subagent&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<h3 id="chained-execution">Chained Execution</h3>
+<p>You can instruct the primary AI to chain subagents together. The output of one subagent becomes the input of another using a <code>{previous}</code> placeholder interpolation mechanism handled by the tool.</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_ai_once</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Have the &#39;researcher&#39; agent summarize the topic, then pass its output to the &#39;writer&#39; agent to draft a blog post.&quot;</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;subagent&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<h3 id="extension-path-overrides">Extension Path Overrides</h3>
+<p>If you need to load the subagent extension from a custom location instead of relying on the default package resolution, set the <code>SIDECAR_SUBAGENT_EXTENSION_PATH</code> environment variable before starting the sidecar. See <a href="environment-variables.html">Environment Variables</a> for more details.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+<li><strong>Tool 'subagent' was requested but the extension could not be loaded:</strong> The sidecar failed to locate the built-in subagent extension. Ensure your SDK installation is intact. If you are overriding the path, verify your environment variables.</li>
+<li><strong>Subagents are failing to spawn or returning errors:</strong> Ensure the sidecar has access to a compatible CLI binary. The sidecar manages internal path filtering to ensure the correct binary is invoked, but if subagents fail immediately, check your system's path and ensure your global CLI installation isn't outdated compared to the sidecar dependencies.</li>
+</ul>
+<h2 id="related-pages">Related Pages</h2>
+<ul>
+<li><a href="extending-with-tools.html">Extending Capabilities with Tools</a></li>
+<li><a href="python-integration-patterns.html">Python Integration Patterns</a></li>
+<li><a href="runtime-architecture.html">Runtime Architecture</a></li>
+</ul>
                 </div>
-            </div>
+            </article>
+            <nav class="page-nav">
+                
+                <a href="extending-with-tools.html" class="page-nav-link page-nav-prev">
+                    <span class="page-nav-label">Previous</span>
+                    <span class="page-nav-title">Extending Capabilities with Tools</span>
+                </a>
+                
+                
+                <a href="python-integration-patterns.html" class="page-nav-link page-nav-next">
+                    <span class="page-nav-label">Next</span>
+                    <span class="page-nav-title">Python Integration Patterns</span>
+                </a>
+                
+            </nav>
+            
+            <aside class="toc-sidebar">
+                <div class="toc-container">
+                    <h3>On this page</h3>
+                    <div class="toc">
+<ul>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#quick-example">Quick Example</a></li>
+<li><a href="#step-by-step-guide">Step-by-Step Guide</a></li>
+<li><a href="#advanced-usage">Advanced Usage</a><ul>
+<li><a href="#parallel-execution">Parallel Execution</a></li>
+<li><a href="#chained-execution">Chained Execution</a></li>
+<li><a href="#extension-path-overrides">Extension Path Overrides</a></li>
+</ul>
+</li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#related-pages">Related Pages</a></li>
+</ul>
+</div>
+
+                </div>
+            </aside>
+            
 
         </main>
 
